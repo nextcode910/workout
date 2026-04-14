@@ -697,7 +697,7 @@
       <div class="letter">A</div>
       <div class="info">
         <div class="wname">Allenamento A</div>
-        <div class="wmeta">Spinta · Quadricipiti dominante · ~65 min</div>
+        <div class="wmeta" id="metaA">Spinta · Quadricipiti dominante · ~65 min</div>
       </div>
       <span class="material-icons arrow">chevron_right</span>
     </div>
@@ -705,7 +705,7 @@
       <div class="letter" style="color:var(--accent2)">B</div>
       <div class="info">
         <div class="wname">Allenamento B</div>
-        <div class="wmeta">Tirata · Femorali dominante · ~65 min</div>
+        <div class="wmeta" id="metaB">Tirata · Femorali dominante · ~65 min</div>
       </div>
       <span class="material-icons arrow">chevron_right</span>
     </div>
@@ -713,7 +713,7 @@
       <div class="letter" style="color:var(--accent3)">C</div>
       <div class="info">
         <div class="wname">Allenamento C</div>
-        <div class="wmeta">Fullbody composito · ~60 min</div>
+        <div class="wmeta" id="metaC">Fullbody composito · ~60 min</div>
       </div>
       <span class="material-icons arrow">chevron_right</span>
     </div>
@@ -901,117 +901,189 @@
 <script>
 // ═══════════════════════════════════════════════
 // PROGRAM DATA — Evidence-based, 3 months
-// Doppia progressione: prima reps nel range, poi carico
-// RIR: 2-1-0 progressivo per serie (Schoenfeld / Robinson 2024)
-// Volume: 10-16 set/muscolo/settimana scalabile per fase
-// Note: niente squat/affondi (crociato), manubri su spinta (spalla)
+// Fonte: Schoenfeld 2017, Robinson 2024, Pelland 2024,
+//        Bruggisser 2023, RP Strength / Israetel 2024
+//
+// Struttura mesociclo (Israetel / block periodization):
+//   W1-4  Accumulo:        volume cresce W1→W4, RPE 7-8, RIR 2-1
+//   W5-8  Intensificazione: carichi salgono, rep scendono, RPE 8-9, RIR 1-0
+//   W9    Deload:           volume -50%, carico -30%, RPE 5-6
+//   W10-12 Peak:            volume moderato, intensità max, RPE 8-9
+//
+// Volume progressivo DENTRO ogni fase (non piatto):
+//   Accumulo W1-2 = 2 serie, W3-4 = 3 serie
+//   Intensificazione W5-6 = 3 serie, W7-8 = 4 serie
+//   (RP Strength: partire dal MEV e salire gradualmente)
+//
+// Fullbody 3x/settimana: ogni muscolo stimolato 3×/sett.
+//   → 2-3 serie/esercizio/sessione = 6-9 serie/muscolo/sett.
+//   → Nella fascia efficace senza eccessi di fatica
+//   → Nessuna priorità su gruppi specifici per ora
+//
+// Vincoli individuali:
+//   - No squat/affondi/bulgarian (crociato subtotale)
+//   - Manubri su tutti gli esercizi di spinta (spalla destra)
+//   - Pressa pendulum come esercizio principale gambe
 // ═══════════════════════════════════════════════
 
 const PHASES = [
-  { name: "Accumulo", label: "Fase 1 — Accumulo", weeks: [1,2,3,4], rpe: "RPE 7-8", rirNote: "RIR 2-1", color: "#e8ff3c" },
-  { name: "Intensificazione", label: "Fase 2 — Intensificazione", weeks: [5,6,7,8], rpe: "RPE 8-9", rirNote: "RIR 1-0", color: "#3cffb4" },
-  { name: "Deload", label: "Deload", weeks: [9], rpe: "RPE 5-6", rirNote: "RIR 3-4", color: "#ff6b3c" },
-  { name: "Peak Estivo", label: "Fase 3 — Peak Estivo", weeks: [10,11,12], rpe: "RPE 8-9", rirNote: "RIR 1-0", color: "#ff6b3c" },
+  { name: "Accumulo",         label: "Fase 1 — Accumulo",         weeks: [1,2,3,4],  rpe: "RPE 7-8", rirNote: "RIR 2-1", color: "#e8ff3c" },
+  { name: "Intensificazione", label: "Fase 2 — Intensificazione", weeks: [5,6,7,8],  rpe: "RPE 8-9", rirNote: "RIR 1-0", color: "#3cffb4" },
+  { name: "Deload",           label: "Deload",                    weeks: [9],         rpe: "RPE 5-6", rirNote: "RIR 3-4", color: "#ff6b3c" },
+  { name: "Peak Estivo",      label: "Fase 3 — Peak Estivo",      weeks: [10,11,12], rpe: "RPE 8-9", rirNote: "RIR 1-0", color: "#ff6b3c" },
 ];
 
 function getPhaseForWeek(w) {
   return PHASES.find(p => p.weeks.includes(w)) || PHASES[0];
 }
 
-// Schema serie/rep/recupero per esercizi COMPOSTI (default)
-function getSchemeForWeek(w) {
-  if (w <= 4) return { sets: 3, repRange: "10-12", rest: "2 min", note: "Accumulo · doppia progressione" };
-  if (w <= 8) return { sets: 4, repRange: "8-10",  rest: "2 min", note: "Intensificazione · +carico" };
-  if (w === 9) return { sets: 2, repRange: "12-15", rest: "90s",  note: "Deload · carico -30%" };
-  return       { sets: 4, repRange: "6-8",  rest: "2.5 min", note: "Peak · RIR 1-0" };
+// Nota descrittiva per ogni settimana (mostrata nella tabella)
+function getWeekNote(w) {
+  const notes = {
+    1:  "Accumulo W1 · Tecnica + adattamento · RIR 2",
+    2:  "Accumulo W2 · +carico se tutte le reps ok · RIR 2",
+    3:  "Accumulo W3 · Volume sale · RIR 1-2",
+    4:  "Accumulo W4 · Settimana più dura del blocco · RIR 1",
+    5:  "Intensificazione W5 · Carichi più alti, rep scendono · RIR 2",
+    6:  "Intensificazione W6 · Spingi i carichi · RIR 1-2",
+    7:  "Intensificazione W7 · Volume massimo del blocco · RIR 1",
+    8:  "Intensificazione W8 · Settimana più dura · RIR 0-1",
+    9:  "Deload · Carico -30%, volume -50% · RIR 3-4",
+    10: "Peak W10 · Riprendi i carichi · RIR 2",
+    11: "Peak W11 · Spinta finale · RIR 1",
+    12: "Peak W12 · Massimo output · RIR 0-1",
+  };
+  return notes[w] || "";
 }
 
-// Schema per esercizi di ISOLAMENTO
-function getIsoSchemeForWeek(w) {
-  if (w <= 4) return { sets: 3, repRange: "12-15", rest: "90s",  note: "Accumulo" };
-  if (w <= 8) return { sets: 3, repRange: "10-12", rest: "90s",  note: "Intensificazione" };
-  if (w === 9) return { sets: 2, repRange: "15-20", rest: "60s",  note: "Deload · carico -30%" };
-  return       { sets: 4, repRange: "10-12", rest: "90s",  note: "Peak" };
+// Schema serie per settimana — progressivo dentro ogni fase
+// Composti
+function getSetsComposti(w) {
+  if (w <= 2)  return 2;   // Accumulo W1-2: MEV
+  if (w <= 4)  return 3;   // Accumulo W3-4: volume cresce
+  if (w <= 6)  return 3;   // Intensificazione W5-6
+  if (w <= 8)  return 4;   // Intensificazione W7-8: picco
+  if (w === 9) return 2;   // Deload
+  if (w <= 11) return 3;   // Peak W10-11
+  return 4;                // Peak W12
+}
+// Isolamenti
+function getSetsIso(w) {
+  if (w <= 2)  return 2;
+  if (w <= 4)  return 2;
+  if (w <= 6)  return 3;
+  if (w <= 8)  return 3;
+  if (w === 9) return 2;
+  if (w <= 11) return 3;
+  return 3;
+}
+
+// Range di rep per fase
+function getRepsComposti(w) {
+  if (w <= 4)  return "10-12";
+  if (w <= 8)  return "8-10";
+  if (w === 9) return "12-15";
+  return "6-8";
+}
+function getRepsIso(w) {
+  if (w <= 4)  return "12-15";
+  if (w <= 8)  return "10-12";
+  if (w === 9) return "15-20";
+  return "10-12";
+}
+
+// Recupero per fase
+function getRestComposti(w) {
+  if (w <= 4)  return "2 min";
+  if (w <= 8)  return "2 min";
+  if (w === 9) return "90s";
+  return "2.5 min";
+}
+function getRestIso(w) {
+  if (w === 9) return "60s";
+  return "90s";
+}
+
+// Schema completo per esercizio
+function getExScheme(ex, w) {
+  const isIso = ex.type === 'iso';
+  const isFacepull = ex.type === 'posturale';
+  if (isFacepull) {
+    return { sets: 2, repRange: "15-20", rest: "60s", note: getWeekNote(w) };
+  }
+  return {
+    sets:     isIso ? getSetsIso(w)      : getSetsComposti(w),
+    repRange: isIso ? getRepsIso(w)      : getRepsComposti(w),
+    rest:     isIso ? getRestIso(w)      : getRestComposti(w),
+    note:     getWeekNote(w)
+  };
+}
+
+// Stima durata sessione in minuti per la settimana corrente
+function estimateDuration(letter, w) {
+  const wo = WORKOUTS[letter];
+  let mins = 5; // setup/warm-up generale
+  wo.exercises.forEach(ex => {
+    const s = getExScheme(ex, w);
+    const setTime = 0.5;           // ~30s per serie
+    const restMin = parseFloat(s.rest) || 1.5;
+    const warmupSets = ex.warmup ? 1 : 0;
+    mins += (s.sets + warmupSets) * (setTime + restMin);
+    mins += 1; // cambio attrezzo / setup
+  });
+  return Math.round(mins);
 }
 
 // ── SCHEDE ──────────────────────────────────────
-// A: Spinta + Quad dominante
-//    Pressa pendulum (no squat - crociato)
-//    Panca piana manubri (no bilanciere - spalla)
-//    Petto e spalle: volume extra nelle prime 4W
-// B: Tirata + Femorali dominante
-//    Stacco rumeno re dell'allenamento
-//    Facepull obbligatorio (posturale + spalla)
-// C: Fullbody composito
-//    Variante pressa + spinta inclinata + tirata
+// A: Spinta + Quad dominante  (~55-65 min)
+// B: Tirata + Femorali        (~55-65 min)
+// C: Fullbody composito       (~50-60 min)
+//
+// type: 'comp' = composto, 'iso' = isolamento,
+//       'posturale' = sempre 2×15-20 (facepull)
 // ────────────────────────────────────────────────
 
 const WORKOUTS = {
   A: {
     name: "Allenamento A",
     meta: "Spinta · Quadricipiti dominante",
-    duration: "~65 min",
+    duration: "~55-65 min",
     color: "#e8ff3c",
     exercises: [
       {
-        id:"A1", name:"Pressa Pendulum (Leg Press)",
-        muscle:"Quadricipiti / Glutei · ⚠ ginocchio controllato",
-        warmup:true, method:"buffer", methodLabel:"Buffer RIR",
-        note:"Warm-up: 1×15 leggero. Piedi medi, schiena incollata. Stop prima del cedimento.",
-        setsPerPhase: { acc:3, int:4, del:2, peak:4 },
-        repPerPhase:  { acc:"10-12", int:"8-10", del:"12-15", peak:"8-10" },
-        restPerPhase: { acc:"2 min", int:"2 min", del:"90s", peak:"2.5 min" },
-        startKg: "~130-140kg"
+        id:"A1", name:"Pressa Pendulum",
+        muscle:"Quadricipiti / Glutei",
+        type:"comp", warmup:true, method:"buffer", methodLabel:"Buffer RIR",
+        note:"Warm-up 1×15 leggero. Piedi medi, schiena incollata. Stop prima del cedimento. ⚠ ginocchio controllato.",
+        startKg: "Rif: ~130-140kg"
       },
       {
         id:"A2", name:"Panca Piana Manubri",
         muscle:"Petto / Tricipiti / Deltoidi ant.",
-        warmup:true, method:"buffer", methodLabel:"Buffer RIR",
-        note:"Manubri: traiettoria libera, rispetta la spalla. RIR 2 prime serie, RIR 1 ultima.",
-        setsPerPhase: { acc:4, int:4, del:2, peak:4 },
-        repPerPhase:  { acc:"10-12", int:"8-10", del:"12-15", peak:"6-8" },
-        restPerPhase: { acc:"2 min", int:"2 min", del:"90s", peak:"2.5 min" },
-        startKg: "~18-20kg cad."
+        type:"comp", warmup:true, method:"buffer", methodLabel:"Buffer RIR",
+        note:"Traiettoria libera, rispetta la spalla. RIR 2 prime serie → RIR 1 ultima.",
+        startKg: "Rif: ~18-20kg cad."
       },
       {
-        id:"A3", name:"Alzate Laterali Cavi (basso)",
-        muscle:"Deltoidi laterali · priorità",
-        warmup:false, method:"cedimento", methodLabel:"Cedimento",
-        note:"Cavo basso → tensione costante. Ultima serie al cedimento. Volume extra W1-4.",
-        setsPerPhase: { acc:4, int:4, del:2, peak:4 },
-        repPerPhase:  { acc:"12-15", int:"12-15", del:"15-20", peak:"10-12" },
-        restPerPhase: { acc:"90s", int:"90s", del:"60s", peak:"90s" },
-        startKg: "~8-10kg"
-      },
-      {
-        id:"A4", name:"Leg Extension",
+        id:"A3", name:"Leg Extension",
         muscle:"Quadricipiti (isolamento)",
-        warmup:false, method:"cedimento", methodLabel:"Cedimento",
-        note:"Range completo, cadenza 2-0-2. Cedimento solo ultima serie, no dolore ginocchio.",
-        setsPerPhase: { acc:3, int:3, del:2, peak:3 },
-        repPerPhase:  { acc:"12-15", int:"10-12", del:"15-20", peak:"10-12" },
-        restPerPhase: { acc:"90s", int:"90s", del:"60s", peak:"90s" },
-        startKg: "~40-50kg"
+        type:"iso", warmup:false, method:"cedimento", methodLabel:"Cedimento",
+        note:"Cadenza 2-0-2. Cedimento solo ultima serie. No dolore al ginocchio.",
+        startKg: "Rif: ~40-50kg"
       },
       {
-        id:"A5", name:"Croci Cavi (basso → alto)",
-        muscle:"Petto medio-alto · priorità",
-        warmup:false, method:"cedimento", methodLabel:"Cedimento",
-        note:"Picco contrazione in apertura, non in chiusura. Ultima serie al cedimento.",
-        setsPerPhase: { acc:4, int:4, del:2, peak:4 },
-        repPerPhase:  { acc:"12-15", int:"12-15", del:"15-20", peak:"10-12" },
-        restPerPhase: { acc:"90s", int:"90s", del:"60s", peak:"90s" },
-        startKg: "~12-15kg cad."
+        id:"A4", name:"Croci Cavi (basso → alto)",
+        muscle:"Petto medio-alto",
+        type:"iso", warmup:false, method:"cedimento", methodLabel:"Cedimento",
+        note:"Picco contrazione in apertura. Ultima serie al cedimento.",
+        startKg: "Rif: ~12-15kg cad."
       },
       {
-        id:"A6", name:"Pushdown Tricipiti Cavi (corda)",
-        muscle:"Tricipiti (isolamento)",
-        warmup:false, method:"cedimento", methodLabel:"Cedimento",
-        note:"Gomiti fissi ai fianchi. Apertura corda in basso, estensione completa.",
-        setsPerPhase: { acc:3, int:3, del:2, peak:3 },
-        repPerPhase:  { acc:"12-15", int:"10-12", del:"15-20", peak:"10-12" },
-        restPerPhase: { acc:"90s", int:"90s", del:"60s", peak:"90s" },
-        startKg: "~25-30kg"
+        id:"A5", name:"Alzate Laterali Cavi (basso)",
+        muscle:"Deltoidi laterali",
+        type:"iso", warmup:false, method:"cedimento", methodLabel:"Cedimento",
+        note:"Cavo basso → tensione costante lungo tutto il range.",
+        startKg: "Rif: ~8-10kg"
       },
     ]
   },
@@ -1019,68 +1091,50 @@ const WORKOUTS = {
   B: {
     name: "Allenamento B",
     meta: "Tirata · Femorali dominante",
-    duration: "~65 min",
+    duration: "~55-65 min",
     color: "#3cffb4",
     exercises: [
       {
         id:"B1", name:"Stacco Rumeno Bilanciere",
         muscle:"Femorali / Glutei / Erettori",
-        warmup:true, method:"buffer", methodLabel:"Buffer RIR",
+        type:"comp", warmup:true, method:"buffer", methodLabel:"Buffer RIR",
         note:"Warm-up: 1×10 a vuoto + 1×8 leggero. Bilanciere vicino alle gambe, stop a metà tibia.",
-        setsPerPhase: { acc:3, int:4, del:2, peak:4 },
-        repPerPhase:  { acc:"10-12", int:"8-10", del:"12-15", peak:"6-8" },
-        restPerPhase: { acc:"2 min", int:"2.5 min", del:"90s", peak:"2.5 min" },
-        startKg: "~70-80kg"
+        startKg: "Rif: ~70-80kg"
       },
       {
         id:"B2", name:"Trazioni / Lat Machine",
         muscle:"Dorsali / Bicipiti / Romboidi",
-        warmup:true, method:"buffer", methodLabel:"Buffer RIR",
-        note:"Preferisci trazioni se riesci 8+ reps pulite, altrimenti lat machine. Presa prona, larghezza spalle.",
-        setsPerPhase: { acc:3, int:4, del:2, peak:4 },
-        repPerPhase:  { acc:"8-10", int:"6-8", del:"10-12", peak:"6-8" },
-        restPerPhase: { acc:"2 min", int:"2 min", del:"90s", peak:"2.5 min" },
-        startKg: "peso corpo / ~60kg"
+        type:"comp", warmup:true, method:"buffer", methodLabel:"Buffer RIR",
+        note:"Trazioni se riesci 8+ reps pulite, altrimenti lat machine. Presa prona, larghezza spalle.",
+        startKg: "Rif: peso corpo / ~60kg"
       },
       {
         id:"B3", name:"Rematore Manubrio (unilaterale)",
         muscle:"Dorsali / Romboidi / Bicipiti",
-        warmup:false, method:"buffer", methodLabel:"Buffer RIR",
+        type:"comp", warmup:false, method:"buffer", methodLabel:"Buffer RIR",
         note:"Appoggio su panca, schiena parallela. Gomito vicino al corpo, tira verso l'anca.",
-        setsPerPhase: { acc:3, int:4, del:2, peak:4 },
-        repPerPhase:  { acc:"10-12", int:"8-10", del:"12-15", peak:"8-10" },
-        restPerPhase: { acc:"2 min", int:"2 min", del:"90s", peak:"2 min" },
-        startKg: "~28-32kg cad."
+        startKg: "Rif: ~28-32kg cad."
       },
       {
         id:"B4", name:"Leg Curl Sdraiato",
         muscle:"Femorali (isolamento)",
-        warmup:false, method:"cedimento", methodLabel:"Cedimento",
+        type:"iso", warmup:false, method:"cedimento", methodLabel:"Cedimento",
         note:"Cadenza 2-1-2, picco contrazione in alto. Ultima serie al cedimento controllato.",
-        setsPerPhase: { acc:3, int:3, del:2, peak:3 },
-        repPerPhase:  { acc:"12-15", int:"10-12", del:"15-20", peak:"10-12" },
-        restPerPhase: { acc:"90s", int:"90s", del:"60s", peak:"90s" },
-        startKg: "~40-50kg"
+        startKg: "Rif: ~40-50kg"
       },
       {
         id:"B5", name:"Curl Manubri (alternato)",
         muscle:"Bicipiti / Brachiale",
-        warmup:false, method:"cedimento", methodLabel:"Cedimento",
+        type:"iso", warmup:false, method:"cedimento", methodLabel:"Cedimento",
         note:"Supinazione completa in cima. Ultima serie al cedimento, no slancio.",
-        setsPerPhase: { acc:3, int:3, del:2, peak:3 },
-        repPerPhase:  { acc:"12-15", int:"10-12", del:"15-20", peak:"10-12" },
-        restPerPhase: { acc:"90s", int:"90s", del:"60s", peak:"90s" },
-        startKg: "~14-16kg cad."
+        startKg: "Rif: ~14-16kg cad."
       },
       {
         id:"B6", name:"Facepull Cavi (corda)",
-        muscle:"Deltoidi post. / Trapezi medi / Rotatori",
-        warmup:false, method:"buffer", methodLabel:"Buffer RIR",
-        note:"⚑ POSTURALE — non skippare mai. Cavo all'altezza del viso, gomiti alti, apertura esterna.",
-        setsPerPhase: { acc:3, int:3, del:3, peak:3 },
-        repPerPhase:  { acc:"15-20", int:"15-20", del:"15-20", peak:"15-20" },
-        restPerPhase: { acc:"60s", int:"60s", del:"60s", peak:"60s" },
-        startKg: "~15-20kg"
+        muscle:"Deltoidi post. / Trapezi / Rotatori",
+        type:"posturale", warmup:false, method:"buffer", methodLabel:"Buffer RIR",
+        note:"⚑ POSTURALE — non skippare mai. Cavo altezza viso, gomiti alti, apertura esterna.",
+        startKg: "Rif: ~15-20kg"
       },
     ]
   },
@@ -1088,84 +1142,55 @@ const WORKOUTS = {
   C: {
     name: "Allenamento C",
     meta: "Fullbody composito",
-    duration: "~60 min",
+    duration: "~50-60 min",
     color: "#ff6b3c",
     exercises: [
       {
         id:"C1", name:"Pressa Pendulum (piedi alti)",
-        muscle:"Glutei / Femorali · variante posteriore",
-        warmup:true, method:"buffer", methodLabel:"Buffer RIR",
-        note:"Piedi in alto sulla piattaforma → enfasi su glutei e femorali. Buona variante rispetto ad A1.",
-        setsPerPhase: { acc:3, int:3, del:2, peak:3 },
-        repPerPhase:  { acc:"12-15", int:"10-12", del:"15-20", peak:"10-12" },
-        restPerPhase: { acc:"2 min", int:"2 min", del:"90s", peak:"2 min" },
-        startKg: "~110-120kg"
+        muscle:"Glutei / Femorali — variante posteriore",
+        type:"comp", warmup:true, method:"buffer", methodLabel:"Buffer RIR",
+        note:"Piedi in alto sulla piattaforma → enfasi glutei/femorali. Variante rispetto ad A. ⚠ ginocchio.",
+        startKg: "Rif: ~110-120kg"
       },
       {
         id:"C2", name:"Panca Inclinata Manubri (30°)",
         muscle:"Petto alto / Deltoidi ant.",
-        warmup:false, method:"buffer", methodLabel:"Buffer RIR",
-        note:"30° massimo — oltre si sposta troppo sulle spalle. Manubri, traiettoria libera.",
-        setsPerPhase: { acc:3, int:4, del:2, peak:4 },
-        repPerPhase:  { acc:"10-12", int:"8-10", del:"12-15", peak:"8-10" },
-        restPerPhase: { acc:"2 min", int:"2 min", del:"90s", peak:"2 min" },
-        startKg: "~16-18kg cad."
+        type:"comp", warmup:false, method:"buffer", methodLabel:"Buffer RIR",
+        note:"30° max — oltre si sposta sulle spalle. Manubri, traiettoria libera.",
+        startKg: "Rif: ~16-18kg cad."
       },
       {
         id:"C3", name:"Pullover Cavi (straight-arm)",
         muscle:"Dorsali / Serrato / Core",
-        warmup:false, method:"superserie", methodLabel:"Superserie",
-        note:"↔ Superserie con C4. Braccia quasi tese, tira verso i fianchi. Ottimo allungamento dorsali.",
-        setsPerPhase: { acc:3, int:3, del:2, peak:3 },
-        repPerPhase:  { acc:"12-15", int:"10-12", del:"15-20", peak:"10-12" },
-        restPerPhase: { acc:"0s", int:"0s", del:"0s", peak:"0s" },
-        startKg: "~25-30kg"
+        type:"comp", warmup:false, method:"superserie", methodLabel:"Superserie",
+        note:"↔ Superserie con C4. Braccia quasi tese, tira verso i fianchi.",
+        startKg: "Rif: ~25-30kg"
       },
       {
         id:"C4", name:"Shoulder Press Macchina",
         muscle:"Deltoidi / Trapezi superiori",
-        warmup:false, method:"superserie", methodLabel:"Superserie",
+        type:"comp", warmup:false, method:"superserie", methodLabel:"Superserie",
         superNote:"Con C3 — recupero 90s dopo",
         note:"Macchina guidata: sicura per la spalla. Recupero 90s dopo la superserie.",
-        setsPerPhase: { acc:3, int:3, del:2, peak:3 },
-        repPerPhase:  { acc:"10-12", int:"8-10", del:"12-15", peak:"8-10" },
-        restPerPhase: { acc:"90s", int:"90s", del:"60s", peak:"90s" },
-        startKg: "~30-35kg"
+        startKg: "Rif: ~30-35kg"
       },
       {
         id:"C5", name:"Hammer Curl Manubri",
         muscle:"Bicipiti / Brachiale / Brachioradiale",
-        warmup:false, method:"cedimento", methodLabel:"Cedimento",
-        note:"Presa neutra (martello). Colpisce brachiale → spessore braccio. Ultima serie al cedimento.",
-        setsPerPhase: { acc:3, int:3, del:2, peak:3 },
-        repPerPhase:  { acc:"12-15", int:"10-12", del:"15-20", peak:"10-12" },
-        restPerPhase: { acc:"90s", int:"90s", del:"60s", peak:"90s" },
-        startKg: "~16-18kg cad."
+        type:"iso", warmup:false, method:"cedimento", methodLabel:"Cedimento",
+        note:"Presa neutra. Colpisce brachiale → spessore braccio. Ultima serie al cedimento.",
+        startKg: "Rif: ~16-18kg cad."
       },
       {
-        id:"C6", name:"Alzate Frontali Manubri (alternate)",
-        muscle:"Deltoidi anteriori · priorità",
-        warmup:false, method:"cedimento", methodLabel:"Cedimento",
-        note:"Presa neutra, alt. sin/dx. Arriva all'altezza spalle, no oltre. Controlla la discesa.",
-        setsPerPhase: { acc:3, int:3, del:2, peak:3 },
-        repPerPhase:  { acc:"12-15", int:"10-12", del:"15-20", peak:"10-12" },
-        restPerPhase: { acc:"90s", int:"90s", del:"60s", peak:"90s" },
-        startKg: "~10-12kg cad."
+        id:"C6", name:"Pushdown Tricipiti Cavi (corda)",
+        muscle:"Tricipiti (isolamento)",
+        type:"iso", warmup:false, method:"cedimento", methodLabel:"Cedimento",
+        note:"Gomiti fissi ai fianchi. Apertura corda in basso, estensione completa.",
+        startKg: "Rif: ~25-30kg"
       },
     ]
   }
 };
-
-// Legge schema corretto per esercizio + settimana
-function getExScheme(ex, w) {
-  const phaseKey = w <= 4 ? 'acc' : w <= 8 ? 'int' : w === 9 ? 'del' : 'peak';
-  return {
-    sets:     ex.setsPerPhase[phaseKey],
-    repRange: ex.repPerPhase[phaseKey],
-    rest:     ex.restPerPhase[phaseKey],
-    note:     getSchemeForWeek(w).note
-  };
-}
 
 // ═══════════════════════════════════════════════
 // STATE
@@ -1252,6 +1277,14 @@ function renderDashboard() {
 
   document.getElementById('statTotal').textContent = state.sessions.length;
   document.getElementById('statWeek').textContent = w;
+
+  // durata stimata dinamica
+  ['A','B','C'].forEach(l => {
+    const wo = WORKOUTS[l];
+    const mins = estimateDuration(l, w);
+    const el = document.getElementById('meta' + l);
+    if (el) el.textContent = wo.meta + ` · ~${mins} min`;
+  });
 
   // streak
   const streak = calcStreak();
