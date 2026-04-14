@@ -221,7 +221,7 @@
   .workout-card.c .letter { color: var(--accent3); }
   .workout-card .info { flex: 1; }
   .workout-card .info .wname {
-    font-weight: 600; font-size: 13px;
+    font-weight: 600; font-size: 15px;
   }
   .workout-card .info .wmeta {
     font-size: 12px; color: var(--text2); margin-top: 2px;
@@ -1025,11 +1025,14 @@ function estimateDuration(letter, w) {
   let mins = 5; // setup/warm-up generale
   wo.exercises.forEach(ex => {
     const s = getExScheme(ex, w);
-    const setTime = 0.5;           // ~30s per serie
-    const restMin = parseFloat(s.rest) || 1.5;
+    const setTime = 0.5; // ~30s per serie
+    // parse corretto: "2 min" → 2, "2.5 min" → 2.5, "90s" → 1.5, "60s" → 1
+    let restMin = 1.5;
+    if (s.rest.includes('min')) restMin = parseFloat(s.rest);
+    else if (s.rest.includes('s')) restMin = parseInt(s.rest) / 60;
     const warmupSets = ex.warmup ? 1 : 0;
     mins += (s.sets + warmupSets) * (setTime + restMin);
-    mins += 1; // cambio attrezzo / setup
+    mins += 0.5; // cambio attrezzo
   });
   return Math.round(mins);
 }
@@ -1413,7 +1416,7 @@ function renderWorkoutView(letter) {
     let warmupBadge = ex.warmup ? '<span class="ex-warmup">🔥 Riscaldamento</span>' : '';
     let superNote = ex.superNote ? `<div style="font-size:10px;color:var(--accent);margin-top:2px">↔ ${ex.superNote}</div>` : '';
     let exNote = ex.note ? `<div style="font-size:10px;color:var(--accent3);margin-top:3px">⚑ ${ex.note}</div>` : '';
-    let startKgHint = ex.startKg ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">Rif: ${ex.startKg}</div>` : '';
+    let startKgHint = ex.startKg ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">${ex.startKg}</div>` : '';
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
