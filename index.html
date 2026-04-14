@@ -813,15 +813,23 @@
 <div id="viewSettings" class="view">
   <div class="settings-section">
     <h2>Impostazioni</h2>
-    <p>Collega JSONBin per sincronizzare i tuoi allenamenti su qualsiasi device.</p>
+    <p>Collega un GitHub Gist per sincronizzare i tuoi allenamenti su qualsiasi device. Tutto rimane nel tuo account GitHub, gratis e senza limiti.</p>
+
+    <div style="background:var(--surface);border:1px solid #3a5a00;border-radius:var(--radius-sm);padding:14px;font-size:12px;color:var(--text2);line-height:1.9;margin-bottom:18px">
+      <strong style="color:var(--accent);display:block;margin-bottom:4px">Come ottenere il token GitHub</strong>
+      1. Vai su <strong style="color:var(--text)">github.com → Settings → Developer settings</strong><br>
+      2. <strong style="color:var(--text)">Personal access tokens → Tokens (classic)</strong><br>
+      3. Generate new token → seleziona solo scope <strong style="color:var(--accent)">gist</strong><br>
+      4. Copia il token e incollalo qui sotto
+    </div>
 
     <div class="settings-field">
-      <label>JSONBin API Key</label>
-      <input type="password" class="settings-input" id="jsonbinKey" placeholder="$2b$10$..." />
+      <label>GitHub Personal Access Token</label>
+      <input type="password" class="settings-input" id="githubToken" placeholder="ghp_..." />
     </div>
     <div class="settings-field">
-      <label>Bin ID (lascia vuoto per crearne uno nuovo)</label>
-      <input type="text" class="settings-input" id="jsonbinBin" placeholder="64abc123..." />
+      <label>Gist ID (lascia vuoto per crearne uno nuovo)</label>
+      <input type="text" class="settings-input" id="gistId" placeholder="es. a1b2c3d4e5f6..." />
     </div>
 
     <button class="btn-primary ripple mt-8" onclick="saveSettings()">
@@ -868,7 +876,7 @@
           2. Carica questo file come <strong style="color:var(--text)">index.html</strong><br>
           3. Settings → Pages → Branch: main → Save<br>
           4. Accedi da: <strong style="color:var(--accent)">username.github.io/fitness-tracker</strong><br>
-          5. Configura JSONBin per sync multi-device
+          5. Genera un token GitHub con scope <strong style="color:var(--accent)">gist</strong> e configuralo sopra
         </div>
       </div>
     </div>
@@ -985,7 +993,7 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem('fitnessTracker_v2', JSON.stringify(state));
-  syncToJSONBin();
+  syncToGist();
 }
 
 // ═══════════════════════════════════════════════
@@ -1264,16 +1272,16 @@ function saveSession() {
 // SETTINGS
 // ═══════════════════════════════════════════════
 function loadSettingsUI() {
-  document.getElementById('jsonbinKey').value = state.settings.jsonbinKey || '';
-  document.getElementById('jsonbinBin').value = state.settings.jsonbinBin || '';
+  document.getElementById('githubToken').value = state.settings.githubToken || '';
+  document.getElementById('gistId').value = state.settings.gistId || '';
   document.getElementById('currentWeekInput').value = state.currentWeek;
 }
 
 function saveSettings() {
-  state.settings.jsonbinKey = document.getElementById('jsonbinKey').value.trim();
-  state.settings.jsonbinBin = document.getElementById('jsonbinBin').value.trim();
+  state.settings.githubToken = document.getElementById('githubToken').value.trim();
+  state.settings.gistId = document.getElementById('gistId').value.trim();
   saveState();
-  syncToJSONBin(true);
+  syncToGist(true);
 }
 
 function setCurrentWeek() {
@@ -1288,71 +1296,90 @@ function setCurrentWeek() {
 }
 
 // ═══════════════════════════════════════════════
-// JSONBIN SYNC
+// GITHUB GIST SYNC
 // ═══════════════════════════════════════════════
-async function syncToJSONBin(test = false) {
-  const key = state.settings.jsonbinKey;
-  if (!key) {
-    updateSyncStatus(false, 'offline');
-    return;
-  }
-  try {
-    let binId = state.settings.jsonbinBin;
-    const payload = { ...state, settings: { jsonbinKey: '', jsonbinBin: binId } };
+async function syncToGist(test = false) {
+  const token = state.settings.githubToken;
+  if (!token) { updateSyncStatus(false, 'offline'); return; }
 
-    if (!binId) {
-      // Create new bin
-      const res = await fetch('https://api.jsonbin.io/v3/b', {
+  // Strip token from payload saved to Gist (security)
+  const payload = JSON.stringify({
+    ...state,
+    settings: { githubToken: '', gistId: state.settings.gistId }
+  }, null, 2);
+
+  try {
+    let gistId = state.settings.gistId;
+
+    if (!gistId) {
+      // Create new Gist
+      const res = await fetch('https://api.github.com/gists', {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'X-Master-Key': key,
-          'X-Bin-Name': 'fitness-tracker'
+          'X-GitHub-Api-Version': '2022-11-28'
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          description: 'Fitness Tracker Data',
+          public: false,
+          files: { 'fitness-data.json': { content: payload } }
+        })
       });
-      if (!res.ok) throw new Error('Create failed');
+      if (!res.ok) throw new Error(`GitHub ${res.status}: ${res.statusText}`);
       const data = await res.json();
-      binId = data.metadata.id;
-      state.settings.jsonbinBin = binId;
-      document.getElementById('jsonbinBin').value = binId;
+      gistId = data.id;
+      state.settings.gistId = gistId;
+      const el = document.getElementById('gistId');
+      if (el) el.value = gistId;
       localStorage.setItem('fitnessTracker_v2', JSON.stringify(state));
+      if (test) showToast('Gist creato! ID: ' + gistId.slice(0,8) + '…', 'success');
     } else {
-      const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}`, {
-        method: 'PUT',
+      // Update existing Gist
+      const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+        method: 'PATCH',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'X-Master-Key': key
+          'X-GitHub-Api-Version': '2022-11-28'
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          files: { 'fitness-data.json': { content: payload } }
+        })
       });
-      if (!res.ok) throw new Error('Update failed');
+      if (!res.ok) throw new Error(`GitHub ${res.status}: ${res.statusText}`);
+      if (test) showToast('Connessione GitHub Gist OK ✓', 'success');
     }
     updateSyncStatus(true, 'sincronizzato');
-    if (test) showToast('Connessione JSONBin OK ✓', 'success');
   } catch(e) {
     updateSyncStatus(false, 'errore sync');
     if (test) showToast('Errore: ' + e.message, 'error');
   }
 }
 
-async function loadFromJSONBin() {
-  const key = state.settings.jsonbinKey;
-  const binId = state.settings.jsonbinBin;
-  if (!key || !binId) return;
+async function loadFromGist() {
+  const token = state.settings.githubToken;
+  const gistId = state.settings.gistId;
+  if (!token || !gistId) return;
   try {
-    const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
-      headers: { 'X-Master-Key': key }
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28'
+      }
     });
     if (!res.ok) throw new Error('Load failed');
     const data = await res.json();
-    const remote = data.record;
+    const content = data.files['fitness-data.json']?.content;
+    if (!content) throw new Error('File non trovato nel Gist');
+    const remote = JSON.parse(content);
+    // Merge: usa remote solo se ha più sessioni o stessa quantità ma più recente
     if (remote.sessions && remote.sessions.length >= state.sessions.length) {
       state.sessions = remote.sessions;
       state.currentWeek = remote.currentWeek || state.currentWeek;
       localStorage.setItem('fitnessTracker_v2', JSON.stringify(state));
-      updateSyncStatus(true, 'sincronizzato');
     }
+    updateSyncStatus(true, 'sincronizzato');
   } catch(e) {
     updateSyncStatus(false, 'errore caricamento');
   }
@@ -1424,7 +1451,7 @@ function formatDate(iso) {
 // ═══════════════════════════════════════════════
 loadState();
 renderDashboard();
-if (state.settings.jsonbinKey) loadFromJSONBin();
+if (state.settings.githubToken) loadFromGist();
 </script>
 </body>
 </html>
