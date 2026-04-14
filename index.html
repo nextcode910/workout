@@ -207,6 +207,19 @@
     color: inherit;
   }
   .workout-card:hover { border-color: var(--accent); background: var(--surface2); }
+  .workout-card.next {
+    border-color: var(--accent);
+    background: var(--surface2);
+  }
+  .workout-card.next::before {
+    content: '▶ PROSSIMO';
+    display: block;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
   .workout-card .letter {
     width: 44px; height: 44px;
     background: var(--surface3);
@@ -798,13 +811,13 @@
     <label>Note sessione</label>
     <textarea class="session-notes" id="sessionNotes" placeholder="Condizioni, sensazioni, variazioni peso corporeo..."></textarea>
 
-    <button class="btn-primary ripple" onclick="saveSession()">
-      <span class="material-icons">save</span>
-      Salva Sessione
+    <button class="btn-primary ripple" onclick="finishWorkout()">
+      <span class="material-icons">check_circle</span>
+      Fine Allenamento
     </button>
     <button class="btn-secondary ripple" onclick="goBack()">
-      <span class="material-icons">close</span>
-      Annulla
+      <span class="material-icons">arrow_back</span>
+      Torna alla dashboard
     </button>
   </div>
 </div>
@@ -836,6 +849,19 @@
       <span class="material-icons">cloud_sync</span>
       Salva e testa connessione
     </button>
+
+    <div style="margin-top:20px">
+      <div class="settings-field">
+        <label>Link di accesso rapido</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" class="settings-input" id="shareLink" readonly placeholder="Configura token e gist per generare il link" style="font-size:11px;color:var(--text3)" />
+          <button class="btn-icon" onclick="copyShareLink()" title="Copia link" style="flex-shrink:0;width:40px;height:40px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+            <span class="material-icons" style="font-size:18px">content_copy</span>
+          </button>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.6">Salva questo link nei preferiti. Se cancelli la cronologia, riaprilo e l'app si riconfigura automaticamente.</div>
+      </div>
+    </div>
 
     <div style="margin-top:24px">
       <div class="settings-section" style="padding:0">
@@ -1200,25 +1226,70 @@ const WORKOUTS = {
 // ═══════════════════════════════════════════════
 let state = {
   currentWeek: 1,
-  sessions: [],
+  nextWorkout: 'A',       // quale allenamento tocca dopo
+  sessions: [],           // storico sessioni completate
+  draft: null,            // sessione in corso (autosave)
   settings: { githubToken: "", gistId: "" }
 };
 
 let currentWorkout = null;
-let currentFatigue = 0;
 let currentView = 'dashboard';
-let viewStack = [];
 
+// ── SESSION KEY ─────────────────────────────────
+// Chiave univoca: allenamento + settimana + data calendario
+// Permette di ripetere A W1 in settimane calendario diverse
+function sessionKey(letter, week) {
+  const today = new Date().toISOString().split('T')[0];
+  return `${letter}_W${week}_${today}`;
+}
+
+// ═══════════════════════════════════════════════
+// PERSISTENZA
+// ═══════════════════════════════════════════════
 function loadState() {
   try {
-    const s = localStorage.getItem('fitnessTracker_v2');
-    if (s) state = JSON.parse(s);
+    const s = localStorage.getItem('fitnessTracker_v3');
+    if (s) state = { ...state, ...JSON.parse(s) };
   } catch(e) {}
 }
 
 function saveState() {
-  localStorage.setItem('fitnessTracker_v2', JSON.stringify(state));
+  localStorage.setItem('fitnessTracker_v3', JSON.stringify(state));
   syncToGist();
+}
+
+// Autosave del draft (solo localStorage, senza Gist per non spammare)
+function saveDraft() {
+  localStorage.setItem('fitnessTracker_draft', JSON.stringify(state.draft));
+}
+
+function loadDraft(letter, week) {
+  try {
+    const d = localStorage.getItem('fitnessTracker_draft');
+    if (!d) return null;
+    const draft = JSON.parse(d);
+    if (draft && draft.workout === letter && draft.week === week) return draft;
+  } catch(e) {}
+  return null;
+}
+
+// ═══════════════════════════════════════════════
+// URL HASH — token e gistId sopravvivono alla
+// cancellazione del localStorage
+// Formato: #token=ghp_xxx&gist=abc123
+// ═══════════════════════════════════════════════
+function readHashConfig() {
+  const hash = window.location.hash.slice(1);
+  if (!hash) return;
+  const params = Object.fromEntries(hash.split('&').map(p => p.split('=')));
+  if (params.token) state.settings.githubToken = decodeURIComponent(params.token);
+  if (params.gist)  state.settings.gistId      = decodeURIComponent(params.gist);
+}
+
+function buildShareLink() {
+  const t = encodeURIComponent(state.settings.githubToken || '');
+  const g = encodeURIComponent(state.settings.gistId || '');
+  return `${location.origin}${location.pathname}#token=${t}&gist=${g}`;
 }
 
 // ═══════════════════════════════════════════════
@@ -1227,7 +1298,6 @@ function saveState() {
 function navigate(view) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById('viewDashboard').style.display = '';
   document.getElementById('bottomNav').style.display = '';
   document.getElementById('backBtn').style.display = 'none';
 
@@ -1244,12 +1314,10 @@ function navigate(view) {
     currentView = 'settings';
     loadSettingsUI();
   }
-  viewStack = [view];
 }
 
 function openWorkout(letter) {
   currentWorkout = letter;
-  currentFatigue = 0;
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('viewWorkout').classList.add('active');
   document.getElementById('bottomNav').style.display = 'none';
@@ -1289,11 +1357,15 @@ function renderDashboard() {
     if (el) el.textContent = wo.meta + ` · ~${mins} min`;
   });
 
-  // streak
-  const streak = calcStreak();
-  document.getElementById('statStreak').textContent = streak;
+  // prossimo allenamento — evidenzia la card giusta
+  document.querySelectorAll('.workout-card').forEach(c => c.classList.remove('next'));
+  const nextCard = document.querySelector(`.workout-card.${state.nextWorkout.toLowerCase()}`);
+  if (nextCard) nextCard.classList.add('next');
 
-  // recent sessions
+  // streak
+  document.getElementById('statStreak').textContent = calcStreak();
+
+  // ultime sessioni
   const container = document.getElementById('recentSessions');
   const recent = [...state.sessions].reverse().slice(0, 5);
   if (recent.length === 0) {
@@ -1301,7 +1373,7 @@ function renderDashboard() {
   } else {
     container.innerHTML = recent.map(s => {
       const rpeColors = ['','#44ff88','#e8ff3c','#ff9933','#ff4444'];
-      const rpeEmoji = ['','😤','🙂','😮‍💨','😵'];
+      const rpeEmoji  = ['','😤','🙂','😮‍💨','😵'];
       return `<div class="session-item">
         <div class="si-left">
           <div class="si-date">${formatDate(s.date)}</div>
@@ -1315,7 +1387,6 @@ function renderDashboard() {
     }).join('');
   }
 
-  // progress chart (simple bars)
   renderProgressChart();
 }
 
@@ -1331,19 +1402,19 @@ function renderProgressChart() {
       });
     });
   });
-  const weeks = Object.keys(byWeek).sort((a,b)=>a-b);
+  const weeks = Object.keys(byWeek).sort((a,b) => a-b);
   if (weeks.length < 2) return;
   const maxVal = Math.max(...Object.values(byWeek));
-  const chartHtml = `<div style="display:flex;gap:6px;align-items:flex-end;height:80px;padding-top:8px">
-    ${weeks.map(w => {
-      const h = Math.round((byWeek[w]/maxVal)*72);
-      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
-        <div style="height:${h}px;background:var(--accent);border-radius:4px 4px 0 0;width:100%;min-height:3px;opacity:.85"></div>
-        <div style="font-size:9px;color:var(--text3)">W${w}</div>
-      </div>`;
-    }).join('')}
-  </div>`;
-  document.getElementById('progressChart').innerHTML = chartHtml;
+  document.getElementById('progressChart').innerHTML = `
+    <div style="display:flex;gap:6px;align-items:flex-end;height:80px;padding-top:8px">
+      ${weeks.map(w => {
+        const h = Math.round((byWeek[w]/maxVal)*72);
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
+          <div style="height:${h}px;background:var(--accent);border-radius:4px 4px 0 0;width:100%;min-height:3px;opacity:.85"></div>
+          <div style="font-size:9px;color:var(--text3)">W${w}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
 }
 
 function calcStreak() {
@@ -1364,78 +1435,95 @@ function calcStreak() {
 function renderWorkoutView(letter) {
   const wo = WORKOUTS[letter];
   const phase = getPhaseForWeek(state.currentWeek);
+  const w = state.currentWeek;
 
-  // header
   document.getElementById('wvLetter').textContent = letter;
   document.getElementById('wvLetter').style.color = wo.color;
   document.getElementById('wvName').textContent = wo.name;
-  document.getElementById('wvMeta').textContent = wo.meta + ' · ' + wo.duration;
+  document.getElementById('wvMeta').textContent = wo.meta + ' · ~' + estimateDuration(letter, w) + ' min';
   document.getElementById('wvDate').textContent = new Date().toLocaleDateString('it-IT', {weekday:'short',day:'numeric',month:'short'});
-  document.getElementById('wvWeekChip').textContent = 'Settimana ' + state.currentWeek;
+  document.getElementById('wvWeekChip').textContent = 'Settimana ' + w;
   document.getElementById('wvPhaseChip').textContent = phase.name;
 
   // week selector
-  const ws = document.getElementById('weekSelector');
-  ws.innerHTML = Array.from({length:12},(_,i)=>{
+  document.getElementById('weekSelector').innerHTML = Array.from({length:12},(_,i) => {
     const wk = i+1;
     const ph = getPhaseForWeek(wk);
     const isDeload = ph.name === 'Deload';
-    return `<button class="week-btn ${isDeload?'deload':''} ${wk===state.currentWeek?'active':''}" onclick="changeWeek(${wk})">${isDeload?'⚡ ':''} W${wk}</button>`;
+    return `<button class="week-btn ${isDeload?'deload':''} ${wk===w?'active':''}" onclick="changeWeek(${wk})">${isDeload?'⚡ ':''}W${wk}</button>`;
   }).join('');
 
-  // exercises
+  // carica draft se esiste per questo allenamento+settimana
+  const draft = loadDraft(letter, w);
+  if (draft) {
+    // ripristina fatica e note dal draft
+    if (draft.fatigue) setFatigue(draft.fatigue);
+    const notesEl = document.getElementById('sessionNotes');
+    if (notesEl && draft.notes) notesEl.value = draft.notes;
+  }
+
+  // esercizi
   const tbody = document.getElementById('exerciseBody');
   tbody.innerHTML = '';
 
   wo.exercises.forEach(ex => {
-    const scheme = getExScheme(ex, state.currentWeek);
+    const scheme = getExScheme(ex, w);
     const sets = scheme.sets;
-    const repRange = scheme.repRange;
-    const rest = scheme.rest;
 
     let setsHtml = '';
     for (let s = 1; s <= sets; s++) {
+      // recupera valore dal draft se presente
+      const draftEx = draft?.exercises?.find(e => e.id === ex.id);
+      const draftSet = draftEx?.sets?.find(ds => ds.set === s);
+      const valKg   = draftSet?.kg   || '';
+      const valReps = draftSet?.reps || '';
+      const valRir  = draftSet?.rir  || '';
+      const done = valKg && valReps;
+
       setsHtml += `<div class="log-set">
-        <span class="log-set-num" id="setStatus_${ex.id}_${s}">S${s}</span>
+        <span class="log-set-num ${done?'set-done':''}" id="setStatus_${ex.id}_${s}">${done?'✓':'S'}${s}</span>
         <div>
-          <input type="number" class="log-input kg" id="kg_${ex.id}_${s}" placeholder="kg" min="0" step="0.5" onchange="markSetDone('${ex.id}',${s})">
+          <input type="number" class="log-input kg" id="kg_${ex.id}_${s}"
+            placeholder="kg" min="0" step="0.5" value="${valKg}"
+            oninput="onInputChange('${ex.id}',${s})">
           <div class="log-label">KG</div>
         </div>
         <div>
-          <input type="number" class="log-input" id="reps_${ex.id}_${s}" placeholder="rep" min="0" onchange="markSetDone('${ex.id}',${s})">
+          <input type="number" class="log-input" id="reps_${ex.id}_${s}"
+            placeholder="rep" min="0" value="${valReps}"
+            oninput="onInputChange('${ex.id}',${s})">
           <div class="log-label">REP</div>
         </div>
         <div>
-          <input type="number" class="log-input" id="rir_${ex.id}_${s}" placeholder="RIR" min="0" max="5">
+          <input type="number" class="log-input" id="rir_${ex.id}_${s}"
+            placeholder="RIR" min="0" max="5" value="${valRir}"
+            oninput="onInputChange('${ex.id}',${s})">
           <div class="log-label">RIR</div>
         </div>
       </div>`;
     }
 
-    let methodClass = ex.method || '';
-    let warmupBadge = ex.warmup ? '<span class="ex-warmup">🔥 Riscaldamento</span>' : '';
-    let superNote = ex.superNote ? `<div style="font-size:10px;color:var(--accent);margin-top:2px">↔ ${ex.superNote}</div>` : '';
-    let exNote = ex.note ? `<div style="font-size:10px;color:var(--accent3);margin-top:3px">⚑ ${ex.note}</div>` : '';
-    let startKgHint = ex.startKg ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">${ex.startKg}</div>` : '';
+    const methodClass = ex.method || '';
+    const warmupBadge = ex.warmup ? '<span class="ex-warmup">🔥 Riscaldamento</span>' : '';
+    const superNote   = ex.superNote ? `<div style="font-size:10px;color:var(--accent);margin-top:2px">↔ ${ex.superNote}</div>` : '';
+    const exNote      = ex.note      ? `<div style="font-size:10px;color:var(--accent3);margin-top:3px">⚑ ${ex.note}</div>` : '';
+    const startKgHint = ex.startKg   ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">${ex.startKg}</div>` : '';
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>
         <div class="ex-name">${ex.name}</div>
         <div class="ex-muscle">${ex.muscle}</div>
-        ${warmupBadge}
-        ${superNote}
-        ${exNote}
+        ${warmupBadge}${superNote}${exNote}
       </td>
       <td style="white-space:nowrap">
-        <strong>${sets}</strong> × <strong>${repRange}</strong>
+        <strong>${sets}</strong> × <strong>${scheme.repRange}</strong>
         <div style="font-size:10px;color:var(--text3);margin-top:2px">${scheme.note}</div>
         ${startKgHint}
       </td>
-      <td style="white-space:nowrap;color:var(--text2)">${rest}</td>
+      <td style="white-space:nowrap;color:var(--text2)">${scheme.rest}</td>
       <td><span class="ex-method ${methodClass}">${ex.methodLabel}</span></td>
-      <td>${setsHtml}</td>
-    `;
+      <td>${setsHtml}</td>`;
     tbody.appendChild(tr);
   });
 }
@@ -1444,63 +1532,105 @@ function changeWeek(w) {
   state.currentWeek = w;
   saveState();
   renderWorkoutView(currentWorkout);
-  document.querySelectorAll('.week-btn').forEach((b,i) => {
-    b.classList.toggle('active', i+1 === w);
-  });
-  document.getElementById('wvWeekChip').textContent = 'Settimana ' + w;
-  const phase = getPhaseForWeek(w);
-  document.getElementById('wvPhaseChip').textContent = phase.name;
+}
+
+// ── AUTOSAVE ────────────────────────────────────
+// Chiamato ad ogni oninput — aggiorna il draft e salva
+function onInputChange(exId, setNum) {
+  markSetDone(exId, setNum);
+  updateDraft();
 }
 
 function markSetDone(exId, setNum) {
-  const kg = document.getElementById(`kg_${exId}_${setNum}`)?.value;
+  const kg   = document.getElementById(`kg_${exId}_${setNum}`)?.value;
   const reps = document.getElementById(`reps_${exId}_${setNum}`)?.value;
   const label = document.getElementById(`setStatus_${exId}_${setNum}`);
-  if (kg && reps && label) {
+  if (!label) return;
+  if (kg && reps) {
     label.classList.add('set-done');
     label.textContent = '✓' + setNum;
+  } else {
+    label.classList.remove('set-done');
+    label.textContent = 'S' + setNum;
   }
 }
 
-function setFatigue(val) {
-  currentFatigue = val;
-  document.querySelectorAll('.fatigue-btn').forEach((b,i) => {
-    b.classList.toggle('selected', i+1 === val);
-  });
-}
-
-function saveSession() {
+function updateDraft() {
   const wo = WORKOUTS[currentWorkout];
+  const w  = state.currentWeek;
+
   const exercisesLog = wo.exercises.map(ex => {
-    const scheme = getExScheme(ex, state.currentWeek);
-    const sets = scheme.sets;
-    const setsData = [];
-    for (let s = 1; s <= sets; s++) {
-      setsData.push({
-        set: s,
-        kg: document.getElementById(`kg_${ex.id}_${s}`)?.value || null,
+    const scheme = getExScheme(ex, w);
+    const sets = [];
+    for (let s = 1; s <= scheme.sets; s++) {
+      sets.push({
+        set:  s,
+        kg:   document.getElementById(`kg_${ex.id}_${s}`)?.value   || null,
         reps: document.getElementById(`reps_${ex.id}_${s}`)?.value || null,
-        rir: document.getElementById(`rir_${ex.id}_${s}`)?.value || null,
+        rir:  document.getElementById(`rir_${ex.id}_${s}`)?.value  || null,
       });
     }
-    return { id: ex.id, name: ex.name, sets: setsData };
+    return { id: ex.id, name: ex.name, sets };
   });
 
-  const session = {
-    id: Date.now(),
-    date: new Date().toISOString(),
-    workout: currentWorkout,
-    week: state.currentWeek,
-    phase: getPhaseForWeek(state.currentWeek).name,
-    fatigue: currentFatigue,
-    notes: document.getElementById('sessionNotes').value,
+  state.draft = {
+    key:      sessionKey(currentWorkout, w),
+    workout:  currentWorkout,
+    week:     w,
+    phase:    getPhaseForWeek(w).name,
+    date:     new Date().toISOString(),
+    fatigue:  state.draft?.fatigue || 0,
+    notes:    document.getElementById('sessionNotes')?.value || '',
     exercises: exercisesLog
   };
 
+  saveDraft();
+  // sync Gist ad ogni input (i recuperi tra serie sono > 1 min)
+  syncToGist();
+  updateSyncStatus(true, 'salvato');
+}
+
+function setFatigue(val) {
+  if (state.draft) state.draft.fatigue = val;
+  document.querySelectorAll('.fatigue-btn').forEach((b,i) => {
+    b.classList.toggle('selected', i+1 === val);
+  });
+  if (currentView === 'workout') updateDraft();
+}
+
+// Note — salva in tempo reale
+document.addEventListener('DOMContentLoaded', () => {
+  const notesEl = document.getElementById('sessionNotes');
+  if (notesEl) notesEl.addEventListener('input', () => updateDraft());
+});
+
+// ── FINE ALLENAMENTO ────────────────────────────
+// Segna la sessione come completata, avanza la sequenza A→B→C
+function finishWorkout() {
+  if (!state.draft) {
+    showToast('Nessun dato inserito', 'error');
+    return;
+  }
+
+  // sposta draft → sessioni
+  const session = { ...state.draft, completedAt: new Date().toISOString() };
   state.sessions.push(session);
+  state.draft = null;
+  localStorage.removeItem('fitnessTracker_draft');
+
+  // avanza sequenza A→B→C, aggiorna settimana se ciclo completato
+  const seq = ['A','B','C'];
+  const idx = seq.indexOf(currentWorkout);
+  const next = seq[(idx + 1) % 3];
+  state.nextWorkout = next;
+  if (next === 'A') {
+    // completato un ciclo completo → settimana successiva
+    state.currentWeek = Math.min(state.currentWeek + 1, 12);
+  }
+
   saveState();
-  showToast('Sessione salvata! 💪', 'success');
-  setTimeout(() => goBack(), 1200);
+  showToast(`Allenamento ${currentWorkout} completato! 💪 Prossimo: ${next}`, 'success');
+  setTimeout(() => goBack(), 1500);
 }
 
 // ═══════════════════════════════════════════════
@@ -1508,15 +1638,22 @@ function saveSession() {
 // ═══════════════════════════════════════════════
 function loadSettingsUI() {
   document.getElementById('githubToken').value = state.settings.githubToken || '';
-  document.getElementById('gistId').value = state.settings.gistId || '';
+  document.getElementById('gistId').value      = state.settings.gistId      || '';
   document.getElementById('currentWeekInput').value = state.currentWeek;
+
+  // mostra link di condivisione
+  const linkEl = document.getElementById('shareLink');
+  if (linkEl) linkEl.value = buildShareLink();
 }
 
 function saveSettings() {
   state.settings.githubToken = document.getElementById('githubToken').value.trim();
-  state.settings.gistId = document.getElementById('gistId').value.trim();
+  state.settings.gistId      = document.getElementById('gistId').value.trim();
   saveState();
   syncToGist(true);
+  // aggiorna link
+  const linkEl = document.getElementById('shareLink');
+  if (linkEl) linkEl.value = buildShareLink();
 }
 
 function setCurrentWeek() {
@@ -1530,6 +1667,11 @@ function setCurrentWeek() {
   }
 }
 
+function copyShareLink() {
+  const link = buildShareLink();
+  navigator.clipboard.writeText(link).then(() => showToast('Link copiato!', 'success'));
+}
+
 // ═══════════════════════════════════════════════
 // GITHUB GIST SYNC
 // ═══════════════════════════════════════════════
@@ -1537,7 +1679,6 @@ async function syncToGist(test = false) {
   const token = state.settings.githubToken;
   if (!token) { updateSyncStatus(false, 'offline'); return; }
 
-  // Strip token from payload saved to Gist (security)
   const payload = JSON.stringify({
     ...state,
     settings: { githubToken: '', gistId: state.settings.gistId }
@@ -1547,42 +1688,26 @@ async function syncToGist(test = false) {
     let gistId = state.settings.gistId;
 
     if (!gistId) {
-      // Create new Gist
       const res = await fetch('https://api.github.com/gists', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-GitHub-Api-Version': '2022-11-28'
-        },
-        body: JSON.stringify({
-          description: 'Fitness Tracker Data',
-          public: false,
-          files: { 'fitness-data.json': { content: payload } }
-        })
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
+        body: JSON.stringify({ description: 'Fitness Tracker Data', public: false, files: { 'fitness-data.json': { content: payload } } })
       });
-      if (!res.ok) throw new Error(`GitHub ${res.status}: ${res.statusText}`);
+      if (!res.ok) throw new Error(`GitHub ${res.status}`);
       const data = await res.json();
       gistId = data.id;
       state.settings.gistId = gistId;
       const el = document.getElementById('gistId');
       if (el) el.value = gistId;
-      localStorage.setItem('fitnessTracker_v2', JSON.stringify(state));
+      localStorage.setItem('fitnessTracker_v3', JSON.stringify(state));
       if (test) showToast('Gist creato! ID: ' + gistId.slice(0,8) + '…', 'success');
     } else {
-      // Update existing Gist
       const res = await fetch(`https://api.github.com/gists/${gistId}`, {
         method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-GitHub-Api-Version': '2022-11-28'
-        },
-        body: JSON.stringify({
-          files: { 'fitness-data.json': { content: payload } }
-        })
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
+        body: JSON.stringify({ files: { 'fitness-data.json': { content: payload } } })
       });
-      if (!res.ok) throw new Error(`GitHub ${res.status}: ${res.statusText}`);
+      if (!res.ok) throw new Error(`GitHub ${res.status}`);
       if (test) showToast('Connessione GitHub Gist OK ✓', 'success');
     }
     updateSyncStatus(true, 'sincronizzato');
@@ -1593,26 +1718,24 @@ async function syncToGist(test = false) {
 }
 
 async function loadFromGist() {
-  const token = state.settings.githubToken;
+  const token  = state.settings.githubToken;
   const gistId = state.settings.gistId;
   if (!token || !gistId) return;
   try {
     const res = await fetch(`https://api.github.com/gists/${gistId}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'X-GitHub-Api-Version': '2022-11-28'
-      }
+      headers: { 'Authorization': `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' }
     });
     if (!res.ok) throw new Error('Load failed');
-    const data = await res.json();
+    const data    = await res.json();
     const content = data.files['fitness-data.json']?.content;
-    if (!content) throw new Error('File non trovato nel Gist');
+    if (!content) throw new Error('File non trovato');
     const remote = JSON.parse(content);
-    // Merge: usa remote solo se ha più sessioni o stessa quantità ma più recente
     if (remote.sessions && remote.sessions.length >= state.sessions.length) {
-      state.sessions = remote.sessions;
+      state.sessions    = remote.sessions;
       state.currentWeek = remote.currentWeek || state.currentWeek;
-      localStorage.setItem('fitnessTracker_v2', JSON.stringify(state));
+      state.nextWorkout = remote.nextWorkout  || state.nextWorkout;
+      localStorage.setItem('fitnessTracker_v3', JSON.stringify(state));
+      renderDashboard();
     }
     updateSyncStatus(true, 'sincronizzato');
   } catch(e) {
@@ -1629,20 +1752,17 @@ function updateSyncStatus(ok, text) {
 // EXPORT / IMPORT
 // ═══════════════════════════════════════════════
 function exportJSON() {
-  const data = JSON.stringify(state, null, 2);
-  const blob = new Blob([data], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
   a.href = url;
-  a.download = `fitness-log-settimana${state.currentWeek}-${new Date().toISOString().split('T')[0]}.json`;
+  a.download = `fitness-log-W${state.currentWeek}-${new Date().toISOString().split('T')[0]}.json`;
   a.click();
   URL.revokeObjectURL(url);
   showToast('JSON esportato!', 'success');
 }
 
-function importJSON() {
-  document.getElementById('importFile').click();
-}
+function importJSON() { document.getElementById('importFile').click(); }
 
 function handleImport(e) {
   const file = e.target.files[0];
@@ -1652,15 +1772,14 @@ function handleImport(e) {
     try {
       const data = JSON.parse(ev.target.result);
       if (data.sessions) {
-        state.sessions = data.sessions;
+        state.sessions    = data.sessions;
         state.currentWeek = data.currentWeek || state.currentWeek;
+        state.nextWorkout = data.nextWorkout  || state.nextWorkout;
         saveState();
         showToast('Importazione completata!', 'success');
         renderDashboard();
       }
-    } catch {
-      showToast('Errore nel file JSON', 'error');
-    }
+    } catch { showToast('Errore nel file JSON', 'error'); }
   };
   reader.readAsText(file);
   e.target.value = '';
@@ -1674,7 +1793,7 @@ function showToast(msg, type = '') {
   t.textContent = msg;
   t.className = 'toast ' + type;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2500);
+  setTimeout(() => t.classList.remove('show'), 2800);
 }
 
 function formatDate(iso) {
@@ -1685,6 +1804,7 @@ function formatDate(iso) {
 // INIT
 // ═══════════════════════════════════════════════
 loadState();
+readHashConfig();   // token/gistId dall'URL hash (sopravvive alla cancellazione del localStorage)
 renderDashboard();
 if (state.settings.githubToken) loadFromGist();
 </script>
