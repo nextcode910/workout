@@ -902,7 +902,9 @@
           2. Carica questo file come <strong style="color:var(--text)">index.html</strong><br>
           3. Settings → Pages → Branch: main → Save<br>
           4. Accedi da: <strong style="color:var(--accent)">username.github.io/fitness-tracker</strong><br>
-          5. Genera un token GitHub con scope <strong style="color:var(--accent)">gist</strong> e configuralo sopra
+          5. Genera token GitHub con scope <strong style="color:var(--accent)">gist</strong> e configuralo sopra<br>
+          6. Al primo salvataggio il Gist viene creato con <strong style="color:var(--text)">fitness-data.json</strong> e <strong style="color:var(--text)">program.json</strong><br>
+          7. Per aggiornare la scheda: modifica <strong style="color:var(--accent)">program.json</strong> nel Gist
         </div>
       </div>
     </div>
@@ -934,22 +936,40 @@
 let PROGRAM = null; // caricato all'avvio
 
 async function loadProgram() {
-  // 1. prova cache localStorage
+  // 1. prova cache localStorage (disponibile offline)
   try {
     const cached = localStorage.getItem('fitnessProgram_v1');
     if (cached) PROGRAM = JSON.parse(cached);
   } catch(e) {}
 
-  // 2. fetch dal server (aggiorna la cache)
-  try {
-    const res = await fetch('program.json');
-    if (res.ok) {
-      const data = await res.json();
-      PROGRAM = data;
-      localStorage.setItem('fitnessProgram_v1', JSON.stringify(data));
-    }
-  } catch(e) {
-    // offline — usa cache
+  // 2. se c'è token+gist, carica dal Gist (fonte primaria)
+  const token  = state.settings.githubToken;
+  const gistId = state.settings.gistId;
+  if (token && gistId) {
+    try {
+      const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+        headers: { 'Authorization': `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const content = data.files['program.json']?.content;
+        if (content) {
+          PROGRAM = JSON.parse(content);
+          localStorage.setItem('fitnessProgram_v1', JSON.stringify(PROGRAM));
+        }
+      }
+    } catch(e) { /* usa cache */ }
+  }
+
+  // 3. fallback: fetch locale program.json (primo avvio senza gist)
+  if (!PROGRAM) {
+    try {
+      const res = await fetch('program.json');
+      if (res.ok) {
+        PROGRAM = await res.json();
+        localStorage.setItem('fitnessProgram_v1', JSON.stringify(PROGRAM));
+      }
+    } catch(e) {}
   }
 
   if (!PROGRAM) {
@@ -1478,24 +1498,33 @@ function copyShareLink() {
 
 // ═══════════════════════════════════════════════
 // GITHUB GIST SYNC
+// Il Gist contiene due file:
+//   fitness-data.json  — log sessioni (aggiornato ad ogni input)
+//   program.json       — scheda esercizi (aggiornato solo se PROGRAM cambia)
 // ═══════════════════════════════════════════════
 async function syncToGist(test = false) {
   const token = state.settings.githubToken;
   if (!token) { updateSyncStatus(false, 'offline'); return; }
 
-  const payload = JSON.stringify({
+  const dataPayload    = JSON.stringify({
     ...state,
     settings: { githubToken: '', gistId: state.settings.gistId }
   }, null, 2);
+
+  const programPayload = PROGRAM ? JSON.stringify(PROGRAM, null, 2) : null;
 
   try {
     let gistId = state.settings.gistId;
 
     if (!gistId) {
+      // Crea nuovo Gist con entrambi i file
+      const files = { 'fitness-data.json': { content: dataPayload } };
+      if (programPayload) files['program.json'] = { content: programPayload };
+
       const res = await fetch('https://api.github.com/gists', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
-        body: JSON.stringify({ description: 'Fitness Tracker Data', public: false, files: { 'fitness-data.json': { content: payload } } })
+        body: JSON.stringify({ description: 'Fitness Tracker', public: false, files })
       });
       if (!res.ok) throw new Error(`GitHub ${res.status}`);
       const data = await res.json();
@@ -1506,10 +1535,14 @@ async function syncToGist(test = false) {
       localStorage.setItem('fitnessTracker_v3', JSON.stringify(state));
       if (test) showToast('Gist creato! ID: ' + gistId.slice(0,8) + '…', 'success');
     } else {
+      // Aggiorna Gist — sempre fitness-data, program solo se presente
+      const files = { 'fitness-data.json': { content: dataPayload } };
+      if (programPayload) files['program.json'] = { content: programPayload };
+
       const res = await fetch(`https://api.github.com/gists/${gistId}`, {
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
-        body: JSON.stringify({ files: { 'fitness-data.json': { content: payload } } })
+        body: JSON.stringify({ files })
       });
       if (!res.ok) throw new Error(`GitHub ${res.status}`);
       if (test) showToast('Connessione GitHub Gist OK ✓', 'success');
@@ -1530,18 +1563,30 @@ async function loadFromGist() {
       headers: { 'Authorization': `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' }
     });
     if (!res.ok) throw new Error('Load failed');
-    const data    = await res.json();
-    const content = data.files['fitness-data.json']?.content;
-    if (!content) throw new Error('File non trovato');
-    const remote = JSON.parse(content);
-    if (remote.sessions && remote.sessions.length >= state.sessions.length) {
-      state.sessions    = remote.sessions;
-      state.currentWeek = remote.currentWeek || state.currentWeek;
-      state.nextWorkout = remote.nextWorkout  || state.nextWorkout;
-      localStorage.setItem('fitnessTracker_v3', JSON.stringify(state));
-      renderDashboard();
+    const data = await res.json();
+
+    // carica fitness-data.json
+    const dataContent = data.files['fitness-data.json']?.content;
+    if (dataContent) {
+      const remote = JSON.parse(dataContent);
+      if (remote.sessions && remote.sessions.length >= state.sessions.length) {
+        state.sessions    = remote.sessions;
+        state.currentWeek = remote.currentWeek || state.currentWeek;
+        state.nextWorkout = remote.nextWorkout  || state.nextWorkout;
+        localStorage.setItem('fitnessTracker_v3', JSON.stringify(state));
+      }
     }
+
+    // carica program.json dal Gist se presente (sovrascrive cache locale)
+    const programContent = data.files['program.json']?.content;
+    if (programContent) {
+      const remoteProgram = JSON.parse(programContent);
+      PROGRAM = remoteProgram;
+      localStorage.setItem('fitnessProgram_v1', JSON.stringify(remoteProgram));
+    }
+
     updateSyncStatus(true, 'sincronizzato');
+    renderDashboard();
   } catch(e) {
     updateSyncStatus(false, 'errore caricamento');
   }
