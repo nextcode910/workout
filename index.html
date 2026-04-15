@@ -356,15 +356,99 @@
   }
   .ex-name { font-weight: 500; }
   .ex-muscle { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  /* Warmup popup */
   .ex-warmup {
-    display: inline-block;
-    font-size: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
     background: #ff6b3c22;
     color: var(--accent3);
-    border-radius: 4px;
-    padding: 1px 5px;
-    margin-top: 3px;
+    border-radius: 6px;
+    padding: 3px 8px;
+    margin-top: 4px;
+    cursor: pointer;
+    border: 1px solid #ff6b3c33;
+    font-family: 'DM Sans', sans-serif;
+    transition: background .2s;
+    user-select: none;
   }
+  .ex-warmup:hover { background: #ff6b3c33; }
+  .ex-warmup:active { background: #ff6b3c44; }
+
+  .warmup-popup {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.7);
+    z-index: 300;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 16px;
+    animation: fadeIn .2s ease;
+  }
+  .warmup-popup-inner {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius) var(--radius) var(--radius-sm) var(--radius-sm);
+    width: 100%;
+    max-width: 480px;
+    padding: 20px;
+    animation: slideUp .25s ease;
+  }
+  .warmup-popup-inner h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    color: var(--accent3);
+    margin-bottom: 4px;
+  }
+  .warmup-popup-inner .wu-subtitle {
+    font-size: 11px;
+    color: var(--text3);
+    margin-bottom: 14px;
+  }
+  .warmup-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .warmup-row:last-of-type { border-bottom: none; }
+  .warmup-row .wu-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    color: var(--accent3);
+    width: 24px;
+    flex-shrink: 0;
+  }
+  .warmup-row .wu-reps {
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .warmup-row .wu-desc {
+    font-size: 12px;
+    color: var(--text2);
+    flex: 1;
+  }
+  .warmup-close {
+    width: 100%;
+    margin-top: 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text2);
+    padding: 10px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background .2s;
+  }
+  .warmup-close:hover { background: var(--surface3); color: var(--text); }
+
+  @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideUp { from { transform: translateY(40px); } to { transform: translateY(0); } }
   .ex-method {
     display: inline-block;
     font-size: 10px;
@@ -734,6 +818,26 @@
     </div>
   </div>
 
+  <div class="divider mt-8"></div>
+  <div class="section-title">Statistiche</div>
+  <div class="progress-section">
+    <div class="progress-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="pc-title" style="margin-bottom:0">Tonnellaggio settimanale (KG)</div>
+        <div style="text-align:right">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);line-height:1" id="statTotalKg">0</div>
+          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">KG totali</div>
+        </div>
+      </div>
+      <div id="progressChart">
+        <div class="prog-empty">
+          <span class="material-icons">show_chart</span>
+          I dati appariranno dopo le prime sessioni
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- WORKOUT VIEW -->
@@ -905,6 +1009,21 @@
     <span class="material-icons">settings</span>
     <span>Impostazioni</span>
   </button>
+</div>
+
+<!-- WARMUP POPUP -->
+<div id="warmupPopup" class="warmup-popup" style="display:none" onclick="closeWarmup(event)">
+  <div class="warmup-popup-inner">
+    <h3 id="warmupTitle">Riscaldamento</h3>
+    <div class="wu-subtitle" id="warmupSubtitle"></div>
+    <div id="warmupRows"></div>
+    <button class="warmup-close" onclick="closeWarmupBtn()">
+      <span style="display:flex;align-items:center;justify-content:center;gap:6px">
+        <span class="material-icons" style="font-size:18px">check</span>
+        Capito, inizia le serie
+      </span>
+    </button>
+  </div>
 </div>
 
 <!-- TOAST -->
@@ -1158,6 +1277,8 @@ function renderDashboard() {
   if (nextLabelEl) nextLabelEl.classList.add('visible');
   const nextCard = document.querySelector(`.workout-card.${state.nextWorkout.toLowerCase()}`);
   if (nextCard) nextCard.classList.add('next');
+
+  renderStats();
 }
 
 function calcStreak() {
@@ -1248,30 +1369,20 @@ function renderWorkoutView(letter) {
     }
 
     const methodClass = ex.method || '';
-    const warmupBadge = ex.warmup ? '<span class="ex-warmup">🔥 Riscaldamento</span>' : '';
-    const superNote   = ex.superNote ? `<div style="font-size:10px;color:var(--accent);margin-top:2px">↔ ${ex.superNote}</div>` : '';
-    const exNote      = ex.note      ? `<div style="font-size:10px;color:var(--accent3);margin-top:3px">⚑ ${ex.note}</div>` : '';
-    const refKgHint   = ex.refKg     ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">Rif: ${getRefKg(ex, state.currentWeek)}</div>` : '';
+    const warmupBadge = ex.warmup
+      ? `<button class="ex-warmup" onclick="showWarmup('${ex.id}')">🔥 Riscaldamento</button>`
+      : '';
+    const superNote = ex.superNote ? `<div style="font-size:10px;color:var(--accent);margin-top:2px">↔ ${ex.superNote}</div>` : '';
+    const exNote    = ex.note      ? `<div style="font-size:10px;color:var(--accent3);margin-top:3px">⚑ ${ex.note}</div>`      : '';
+    const refKgHint = ex.refKg     ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">Rif: ${getRefKg(ex, state.currentWeek)}</div>` : '';
 
-    // warmup protocol dal JSON
-    let warmupHtml = '';
-    if (ex.warmup && ex.warmupProtocol) {
-      warmupHtml = `<div style="margin-top:6px">` +
-        ex.warmupProtocol.map(wu =>
-          `<div style="font-size:10px;color:var(--text3);margin-bottom:2px">
-            🔥 ${wu.reps} reps · ${wu.desc}
-          </div>`
-        ).join('') + `</div>`;
-    }
-
+    // warmup protocol NON mostrato inline — popup al click
     // RIR scheme dinamico in base al numero di serie
     let rirHtml = '';
     if (ex.rirScheme) {
       const setsKey = sets + 'sets';
       const rirText = ex.rirScheme[setsKey] || ex.rirScheme['2sets'] || '';
-      if (rirText) {
-        rirHtml = `<div style="font-size:10px;color:var(--accent2);margin-top:3px">📊 ${rirText}</div>`;
-      }
+      if (rirText) rirHtml = `<div style="font-size:10px;color:var(--accent2);margin-top:3px">📊 ${rirText}</div>`;
     }
 
     const tr = document.createElement('tr');
@@ -1279,7 +1390,7 @@ function renderWorkoutView(letter) {
       <td>
         <div class="ex-name">${ex.name}</div>
         <div class="ex-muscle">${ex.muscle}</div>
-        ${warmupBadge}${superNote}${exNote}${warmupHtml}
+        ${warmupBadge}${superNote}${exNote}
       </td>
       <td style="white-space:nowrap">
         <strong>${sets}</strong> × <strong>${scheme.repRange}</strong>
@@ -1300,7 +1411,86 @@ function changeWeek(w) {
   renderWorkoutView(currentWorkout);
 }
 
-// ── AUTOSAVE ────────────────────────────────────
+// ── WARMUP POPUP ────────────────────────────────
+function showWarmup(exId) {
+  const wo = PROGRAM.workouts[currentWorkout];
+  const ex = wo.exercises.find(e => e.id === exId);
+  if (!ex) return;
+
+  document.getElementById('warmupTitle').textContent    = `🔥 ${ex.name}`;
+  document.getElementById('warmupSubtitle').textContent = 'Protocollo riscaldamento — esegui in ordine prima delle serie di lavoro';
+
+  const rows = document.getElementById('warmupRows');
+  if (ex.warmupProtocol && ex.warmupProtocol.length) {
+    rows.innerHTML = ex.warmupProtocol.map((wu, i) =>
+      `<div class="warmup-row">
+        <div class="wu-num">${i+1}</div>
+        <div class="wu-reps">1 × ${wu.reps} rep</div>
+        <div class="wu-desc">${wu.desc}</div>
+      </div>`
+    ).join('');
+  } else {
+    rows.innerHTML = `<div style="color:var(--text3);font-size:13px;padding:8px 0">Nessun protocollo specifico — riscaldamento generale sufficiente.</div>`;
+  }
+
+  document.getElementById('warmupPopup').style.display = 'flex';
+}
+
+function closeWarmup(e) {
+  if (e.target === document.getElementById('warmupPopup')) closeWarmupBtn();
+}
+
+function closeWarmupBtn() {
+  document.getElementById('warmupPopup').style.display = 'none';
+}
+
+// ── STATISTICHE ──────────────────────────────────
+function renderStats() {
+  const byWeek  = {};
+  let totalKg   = 0;
+
+  Object.values(state.logs).forEach(log => {
+    if (!log.exercises) return;
+    const wk = log.week || 1;
+    if (!byWeek[wk]) byWeek[wk] = 0;
+    log.exercises.forEach(ex => {
+      ex.sets && ex.sets.forEach(set => {
+        if (set.kg && set.reps) {
+          const val = parseFloat(set.kg) * parseInt(set.reps);
+          byWeek[wk] += val;
+          totalKg    += val;
+        }
+      });
+    });
+  });
+
+  // totale kg
+  const totalEl = document.getElementById('statTotalKg');
+  if (totalEl) totalEl.textContent = totalKg >= 1000
+    ? (totalKg / 1000).toFixed(1) + 't'
+    : Math.round(totalKg).toLocaleString('it-IT');
+
+  // grafico
+  const chartEl = document.getElementById('progressChart');
+  if (!chartEl) return;
+  const weeks = Object.keys(byWeek).sort((a,b) => a-b);
+  if (weeks.length < 1) return;
+  const maxVal = Math.max(...Object.values(byWeek));
+  chartEl.innerHTML = `
+    <div style="display:flex;gap:4px;align-items:flex-end;height:80px;padding-top:8px">
+      ${weeks.map(w => {
+        const h    = Math.max(Math.round((byWeek[w]/maxVal)*72), 3);
+        const kVal = byWeek[w] >= 1000
+          ? (byWeek[w]/1000).toFixed(1)+'t'
+          : Math.round(byWeek[w])+'kg';
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
+          <div style="font-size:8px;color:var(--text3)">${kVal}</div>
+          <div style="height:${h}px;background:var(--accent);border-radius:4px 4px 0 0;width:100%;opacity:.85"></div>
+          <div style="font-size:9px;color:var(--text3)">W${w}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
 function onInputChange(exId, setNum) {
   markSetDone(exId, setNum);
   updateLog();
