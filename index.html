@@ -207,19 +207,16 @@
     color: inherit;
   }
   .workout-card:hover { border-color: var(--accent); background: var(--surface2); }
-  .workout-card.next {
-    border-color: var(--accent);
-    background: var(--surface2);
-  }
-  .workout-card.next::before {
-    content: '▶ PROSSIMO';
-    display: block;
-    font-size: 9px;
+  .workout-card.next { border-color: var(--accent); background: var(--surface2); }
+  .next-label {
+    font-size: 10px;
     font-weight: 700;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
     color: var(--accent);
-    margin-bottom: 4px;
+    padding: 0 4px 6px;
+    display: none;
   }
+  .next-label.visible { display: block; }
   .workout-card .letter {
     width: 44px; height: 44px;
     background: var(--surface3);
@@ -677,7 +674,8 @@
 <div id="viewDashboard" class="view active">
   <div class="dashboard-hero">
     <div class="logo" id="heroName">—</div>
-    <p id="programDescription">caricamento programma…</p>
+    <p id="programType" style="font-weight:600;color:var(--text2);font-size:13px;margin-top:6px">—</p>
+    <p id="programDetail" style="color:var(--text3);font-size:12px;margin-top:2px">—</p>
   </div>
 
   <div class="stats-row" id="statsRow">
@@ -706,6 +704,7 @@
 
   <div class="section-title">Allenamenti</div>
   <div class="workout-cards" id="workoutCards">
+    <div id="nextLabelA" class="next-label">▶ PROSSIMO</div>
     <div class="workout-card ripple a" onclick="openWorkout('A')">
       <div class="letter" id="letterA">A</div>
       <div class="info">
@@ -714,6 +713,7 @@
       </div>
       <span class="material-icons arrow">chevron_right</span>
     </div>
+    <div id="nextLabelB" class="next-label">▶ PROSSIMO</div>
     <div class="workout-card ripple b" onclick="openWorkout('B')">
       <div class="letter" id="letterB" style="color:var(--accent2)">B</div>
       <div class="info">
@@ -722,6 +722,7 @@
       </div>
       <span class="material-icons arrow">chevron_right</span>
     </div>
+    <div id="nextLabelC" class="next-label">▶ PROSSIMO</div>
     <div class="workout-card ripple c" onclick="openWorkout('C')">
       <div class="letter" id="letterC" style="color:var(--accent3)">C</div>
       <div class="info">
@@ -1154,8 +1155,10 @@ function renderDashboard() {
   // nome utente e descrizione dal JSON
   const heroEl = document.getElementById('heroName');
   if (heroEl) heroEl.textContent = PROGRAM.meta.userName || PROGRAM.meta.name;
-  const descEl = document.getElementById('programDescription');
-  if (descEl) descEl.textContent = PROGRAM.meta.description;
+  const typeEl = document.getElementById('programType');
+  if (typeEl) typeEl.textContent = PROGRAM.meta.programType || '';
+  const detailEl = document.getElementById('programDetail');
+  if (detailEl) detailEl.textContent = PROGRAM.meta.programDetail || '';
 
   document.getElementById('phaseLabel').textContent = phase.rpe + ' · ' + phase.rirNote;
   document.getElementById('phaseName').textContent = phase.label;
@@ -1178,8 +1181,11 @@ function renderDashboard() {
     if (letterEl) letterEl.style.color = wo.color;
   });
 
-  // prossimo allenamento
+  // prossimo allenamento — label sopra la card
+  document.querySelectorAll('.next-label').forEach(l => l.classList.remove('visible'));
   document.querySelectorAll('.workout-card').forEach(c => c.classList.remove('next'));
+  const nextLabelEl = document.getElementById('nextLabel' + state.nextWorkout);
+  if (nextLabelEl) nextLabelEl.classList.add('visible');
   const nextCard = document.querySelector(`.workout-card.${state.nextWorkout.toLowerCase()}`);
   if (nextCard) nextCard.classList.add('next');
 
@@ -1328,19 +1334,41 @@ function renderWorkoutView(letter) {
     const warmupBadge = ex.warmup ? '<span class="ex-warmup">🔥 Riscaldamento</span>' : '';
     const superNote   = ex.superNote ? `<div style="font-size:10px;color:var(--accent);margin-top:2px">↔ ${ex.superNote}</div>` : '';
     const exNote      = ex.note      ? `<div style="font-size:10px;color:var(--accent3);margin-top:3px">⚑ ${ex.note}</div>` : '';
-    const startKgHint = ex.refKg ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">Rif: ${getRefKg(ex, state.currentWeek)}</div>` : '';
+    const refKgHint   = ex.refKg     ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">Rif: ${getRefKg(ex, state.currentWeek)}</div>` : '';
+
+    // warmup protocol dal JSON
+    let warmupHtml = '';
+    if (ex.warmup && ex.warmupProtocol) {
+      warmupHtml = `<div style="margin-top:6px">` +
+        ex.warmupProtocol.map(wu =>
+          `<div style="font-size:10px;color:var(--text3);margin-bottom:2px">
+            🔥 ${wu.reps} reps · ${wu.desc}
+          </div>`
+        ).join('') + `</div>`;
+    }
+
+    // RIR scheme dinamico in base al numero di serie
+    let rirHtml = '';
+    if (ex.rirScheme) {
+      const setsKey = sets + 'sets';
+      const rirText = ex.rirScheme[setsKey] || ex.rirScheme['2sets'] || '';
+      if (rirText) {
+        rirHtml = `<div style="font-size:10px;color:var(--accent2);margin-top:3px">📊 ${rirText}</div>`;
+      }
+    }
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>
         <div class="ex-name">${ex.name}</div>
         <div class="ex-muscle">${ex.muscle}</div>
-        ${warmupBadge}${superNote}${exNote}
+        ${warmupBadge}${superNote}${exNote}${warmupHtml}
       </td>
       <td style="white-space:nowrap">
         <strong>${sets}</strong> × <strong>${scheme.repRange}</strong>
         <div style="font-size:10px;color:var(--text3);margin-top:2px">${scheme.note}</div>
-        ${startKgHint}
+        ${rirHtml}
+        ${refKgHint}
       </td>
       <td style="white-space:nowrap;color:var(--text2)">${scheme.rest}</td>
       <td><span class="ex-method ${methodClass}">${ex.methodLabel}</span></td>
