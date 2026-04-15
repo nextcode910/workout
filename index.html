@@ -676,7 +676,7 @@
   .prog-empty .material-icons { font-size: 36px; display: block; margin-bottom: 6px; opacity: .4; }
 
   /* Divider */
-  .divider { height: 1px; background: var(--border); margin: 0 16px 16px; }
+  .divider { height: 1px; background: var(--border); margin: 26px 16px 16px; }
 
   .chip {
     display: inline-flex; align-items: center; gap: 4px;
@@ -818,7 +818,7 @@
     </div>
   </div>
 
-  <div class="divider mt-8"></div>
+  <div class="divider"></div>
   <div class="section-title">Statistiche</div>
   <div class="progress-section">
     <div class="progress-card">
@@ -1370,7 +1370,7 @@ function renderWorkoutView(letter) {
 
     const methodClass = ex.method || '';
     const warmupBadge = ex.warmup
-      ? `<button class="ex-warmup" onclick="showWarmup('${ex.id}')">🔥 Riscaldamento</button>`
+      ? `<button class="ex-warmup" onclick="showWarmup('${ex.id}')">🔥 WARM-UP</button>`
       : '';
     const superNote = ex.superNote ? `<div style="font-size:10px;color:var(--accent);margin-top:2px">↔ ${ex.superNote}</div>` : '';
     const exNote    = ex.note      ? `<div style="font-size:10px;color:var(--accent3);margin-top:3px">⚑ ${ex.note}</div>`      : '';
