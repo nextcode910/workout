@@ -55,7 +55,7 @@
   .header-back:hover { background: var(--surface3); }
   .header h1 {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 18px;
+    font-size: 20px;
     letter-spacing: 1px;
     color: var(--accent);
     flex: 1;
@@ -676,8 +676,8 @@
 <!-- VIEWS -->
 <div id="viewDashboard" class="view active">
   <div class="dashboard-hero">
-    <div class="logo">LIFT</div>
-    <p>Programma Ipertrofia · 3 mesi · Fullbody</p>
+    <div class="logo" id="heroName">—</div>
+    <p id="programDescription">caricamento programma…</p>
   </div>
 
   <div class="stats-row" id="statsRow">
@@ -705,28 +705,28 @@
   </div>
 
   <div class="section-title">Allenamenti</div>
-  <div class="workout-cards">
+  <div class="workout-cards" id="workoutCards">
     <div class="workout-card ripple a" onclick="openWorkout('A')">
-      <div class="letter">A</div>
+      <div class="letter" id="letterA">A</div>
       <div class="info">
-        <div class="wname">Allenamento A</div>
-        <div class="wmeta" id="metaA">Spinta · Quadricipiti dominante · ~65 min</div>
+        <div class="wname" id="wnameA">—</div>
+        <div class="wmeta" id="metaA">caricamento…</div>
       </div>
       <span class="material-icons arrow">chevron_right</span>
     </div>
     <div class="workout-card ripple b" onclick="openWorkout('B')">
-      <div class="letter" style="color:var(--accent2)">B</div>
+      <div class="letter" id="letterB" style="color:var(--accent2)">B</div>
       <div class="info">
-        <div class="wname">Allenamento B</div>
-        <div class="wmeta" id="metaB">Tirata · Femorali dominante · ~65 min</div>
+        <div class="wname" id="wnameB">—</div>
+        <div class="wmeta" id="metaB">caricamento…</div>
       </div>
       <span class="material-icons arrow">chevron_right</span>
     </div>
     <div class="workout-card ripple c" onclick="openWorkout('C')">
-      <div class="letter" style="color:var(--accent3)">C</div>
+      <div class="letter" id="letterC" style="color:var(--accent3)">C</div>
       <div class="info">
-        <div class="wname">Allenamento C</div>
-        <div class="wmeta" id="metaC">Fullbody composito · ~60 min</div>
+        <div class="wname" id="wnameC">—</div>
+        <div class="wmeta" id="metaC">caricamento…</div>
       </div>
       <span class="material-icons arrow">chevron_right</span>
     </div>
@@ -759,10 +759,10 @@
 <!-- WORKOUT VIEW -->
 <div id="viewWorkout" class="view">
   <div class="workout-view-header">
-    <div class="wv-letter" id="wvLetter">A</div>
+    <div class="wv-letter" id="wvLetter">—</div>
     <div class="wv-info">
-      <div class="wv-name" id="wvName">Allenamento A</div>
-      <div class="wv-meta" id="wvMeta">Spinta · Quadricipiti dominante</div>
+      <div class="wv-name" id="wvName">—</div>
+      <div class="wv-meta" id="wvMeta">—</div>
     </div>
   </div>
 
@@ -869,8 +869,8 @@
         <p>Imposta manualmente la settimana del programma.</p>
       </div>
       <div class="settings-field">
-        <label>Settimana (1–12)</label>
-        <input type="number" class="settings-input" id="currentWeekInput" min="1" max="12" value="1" />
+        <label>Settimana corrente</label>
+        <input type="number" class="settings-input" id="currentWeekInput" min="1" value="1" />
       </div>
       <button class="btn-primary ripple" onclick="setCurrentWeek()">
         <span class="material-icons">update</span>
@@ -926,300 +926,90 @@
 
 <script>
 // ═══════════════════════════════════════════════
-// PROGRAM DATA — Evidence-based, 3 months
-// Fonte: Schoenfeld 2017, Robinson 2024, Pelland 2024,
-//        Bruggisser 2023, RP Strength / Israetel 2024
-//
-// Struttura mesociclo (Israetel / block periodization):
-//   W1-4  Accumulo:        volume cresce W1→W4, RPE 7-8, RIR 2-1
-//   W5-8  Intensificazione: carichi salgono, rep scendono, RPE 8-9, RIR 1-0
-//   W9    Deload:           volume -50%, carico -30%, RPE 5-6
-//   W10-12 Peak:            volume moderato, intensità max, RPE 8-9
-//
-// Volume progressivo DENTRO ogni fase (non piatto):
-//   Accumulo W1-2 = 2 serie, W3-4 = 3 serie
-//   Intensificazione W5-6 = 3 serie, W7-8 = 4 serie
-//   (RP Strength: partire dal MEV e salire gradualmente)
-//
-// Fullbody 3x/settimana: ogni muscolo stimolato 3×/sett.
-//   → 2-3 serie/esercizio/sessione = 6-9 serie/muscolo/sett.
-//   → Nella fascia efficace senza eccessi di fatica
-//   → Nessuna priorità su gruppi specifici per ora
-//
-// Vincoli individuali:
-//   - No squat/affondi/bulgarian (crociato subtotale)
-//   - Manubri su tutti gli esercizi di spinta (spalla destra)
-//   - Pressa pendulum come esercizio principale gambe
+// PROGRAM — caricato da program.json
+// Nessun dato hardcoded: fasi, esercizi, parametri
+// sono tutti nel JSON esterno
 // ═══════════════════════════════════════════════
 
-const PHASES = [
-  { name: "Accumulo",         label: "Fase 1 — Accumulo",         weeks: [1,2,3,4],  rpe: "RPE 7-8", rirNote: "RIR 2-1", color: "#e8ff3c" },
-  { name: "Intensificazione", label: "Fase 2 — Intensificazione", weeks: [5,6,7,8],  rpe: "RPE 8-9", rirNote: "RIR 1-0", color: "#3cffb4" },
-  { name: "Deload",           label: "Deload",                    weeks: [9],         rpe: "RPE 5-6", rirNote: "RIR 3-4", color: "#ff6b3c" },
-  { name: "Peak Estivo",      label: "Fase 3 — Peak Estivo",      weeks: [10,11,12], rpe: "RPE 8-9", rirNote: "RIR 1-0", color: "#ff6b3c" },
-];
+let PROGRAM = null; // caricato all'avvio
+
+async function loadProgram() {
+  // 1. prova cache localStorage
+  try {
+    const cached = localStorage.getItem('fitnessProgram_v1');
+    if (cached) PROGRAM = JSON.parse(cached);
+  } catch(e) {}
+
+  // 2. fetch dal server (aggiorna la cache)
+  try {
+    const res = await fetch('program.json');
+    if (res.ok) {
+      const data = await res.json();
+      PROGRAM = data;
+      localStorage.setItem('fitnessProgram_v1', JSON.stringify(data));
+    }
+  } catch(e) {
+    // offline — usa cache
+  }
+
+  if (!PROGRAM) {
+    showToast('Errore caricamento programma', 'error');
+    return false;
+  }
+  return true;
+}
+
+// ── HELPERS ─────────────────────────────────────
 
 function getPhaseForWeek(w) {
-  return PHASES.find(p => p.weeks.includes(w)) || PHASES[0];
+  if (!PROGRAM) return null;
+  return PROGRAM.phases.find(p => p.weeks.includes(w)) || PROGRAM.phases[0];
 }
 
-// Nota descrittiva per ogni settimana (mostrata nella tabella)
+function getPhaseKey(w) {
+  if (w <= 4)  return 'acc';
+  if (w <= 8)  return 'int';
+  if (w === 9) return 'del';
+  return 'peak';
+}
+
 function getWeekNote(w) {
-  const notes = {
-    1:  "Accumulo W1 · Tecnica + adattamento · RIR 2",
-    2:  "Accumulo W2 · +carico se tutte le reps ok · RIR 2",
-    3:  "Accumulo W3 · Volume sale · RIR 1-2",
-    4:  "Accumulo W4 · Settimana più dura del blocco · RIR 1",
-    5:  "Intensificazione W5 · Carichi più alti, rep scendono · RIR 2",
-    6:  "Intensificazione W6 · Spingi i carichi · RIR 1-2",
-    7:  "Intensificazione W7 · Volume massimo del blocco · RIR 1",
-    8:  "Intensificazione W8 · Settimana più dura · RIR 0-1",
-    9:  "Deload · Carico -30%, volume -50% · RIR 3-4",
-    10: "Peak W10 · Riprendi i carichi · RIR 2",
-    11: "Peak W11 · Spinta finale · RIR 1",
-    12: "Peak W12 · Massimo output · RIR 0-1",
-  };
-  return notes[w] || "";
+  return PROGRAM?.weekNotes?.[String(w)] || '';
 }
 
-// Schema serie per settimana — progressivo dentro ogni fase
-// Composti
-function getSetsComposti(w) {
-  if (w <= 2)  return 2;   // Accumulo W1-2: MEV
-  if (w <= 4)  return 3;   // Accumulo W3-4: volume cresce
-  if (w <= 6)  return 3;   // Intensificazione W5-6
-  if (w <= 8)  return 4;   // Intensificazione W7-8: picco
-  if (w === 9) return 2;   // Deload
-  if (w <= 11) return 3;   // Peak W10-11
-  return 4;                // Peak W12
-}
-// Isolamenti
-function getSetsIso(w) {
-  if (w <= 2)  return 2;
-  if (w <= 4)  return 2;
-  if (w <= 6)  return 3;
-  if (w <= 8)  return 3;
-  if (w === 9) return 2;
-  if (w <= 11) return 3;
-  return 3;
-}
-
-// Range di rep per fase
-function getRepsComposti(w) {
-  if (w <= 4)  return "10-12";
-  if (w <= 8)  return "8-10";
-  if (w === 9) return "12-15";
-  return "6-8";
-}
-function getRepsIso(w) {
-  if (w <= 4)  return "12-15";
-  if (w <= 8)  return "10-12";
-  if (w === 9) return "15-20";
-  return "10-12";
-}
-
-// Recupero per fase
-function getRestComposti(w) {
-  if (w <= 4)  return "2 min";
-  if (w <= 8)  return "2 min";
-  if (w === 9) return "90s";
-  return "2.5 min";
-}
-function getRestIso(w) {
-  if (w === 9) return "60s";
-  return "90s";
-}
-
-// Schema completo per esercizio
 function getExScheme(ex, w) {
-  const isIso = ex.type === 'iso';
-  const isFacepull = ex.type === 'posturale';
-  if (isFacepull) {
-    return { sets: 2, repRange: "15-20", rest: "60s", note: getWeekNote(w) };
-  }
+  const pk = getPhaseKey(w);
+  const wk = 'w' + w;
+  const type = ex.type; // 'compound', 'isolation', 'postural', 'calf'
+  const vol = PROGRAM.volumeScheme[type] || PROGRAM.volumeScheme.compound;
   return {
-    sets:     isIso ? getSetsIso(w)      : getSetsComposti(w),
-    repRange: isIso ? getRepsIso(w)      : getRepsComposti(w),
-    rest:     isIso ? getRestIso(w)      : getRestComposti(w),
+    sets:     vol.sets[wk]    ?? 2,
+    repRange: vol.reps[pk]    ?? '10-12',
+    rest:     vol.rest[pk]    ?? '2 min',
     note:     getWeekNote(w)
   };
 }
 
-// Stima durata sessione in minuti per la settimana corrente
+function getRefKg(ex, w) {
+  const pk = getPhaseKey(w);
+  return ex.refKg?.[pk] || '';
+}
+
 function estimateDuration(letter, w) {
-  const wo = WORKOUTS[letter];
-  let mins = 5; // setup/warm-up generale
+  const wo = PROGRAM?.workouts?.[letter];
+  if (!wo) return 0;
+  let mins = 5;
   wo.exercises.forEach(ex => {
     const s = getExScheme(ex, w);
-    const setTime = 0.5; // ~30s per serie
-    // parse corretto: "2 min" → 2, "2.5 min" → 2.5, "90s" → 1.5, "60s" → 1
     let restMin = 1.5;
     if (s.rest.includes('min')) restMin = parseFloat(s.rest);
     else if (s.rest.includes('s')) restMin = parseInt(s.rest) / 60;
     const warmupSets = ex.warmup ? 1 : 0;
-    mins += (s.sets + warmupSets) * (setTime + restMin);
-    mins += 0.5; // cambio attrezzo
+    mins += (s.sets + warmupSets) * (0.5 + restMin);
+    mins += 0.5;
   });
   return Math.round(mins);
 }
-
-// ── SCHEDE ──────────────────────────────────────
-// A: Spinta + Quad dominante  (~55-65 min)
-// B: Tirata + Femorali        (~55-65 min)
-// C: Fullbody composito       (~50-60 min)
-//
-// type: 'comp' = composto, 'iso' = isolamento,
-//       'posturale' = sempre 2×15-20 (facepull)
-// ────────────────────────────────────────────────
-
-const WORKOUTS = {
-  A: {
-    name: "Allenamento A",
-    meta: "Spinta · Quadricipiti dominante",
-    duration: "~55-65 min",
-    color: "#e8ff3c",
-    exercises: [
-      {
-        id:"A1", name:"Pressa Pendulum",
-        muscle:"Quadricipiti / Glutei",
-        type:"comp", warmup:true, method:"buffer", methodLabel:"Buffer RIR",
-        note:"Warm-up 1×15 leggero. Piedi medi, schiena incollata. Stop prima del cedimento. ⚠ ginocchio controllato.",
-        startKg: "Rif: W1-4 ~155kg · W5-8 ~165-170kg · Peak ~180kg"
-      },
-      {
-        id:"A2", name:"Panca Piana Manubri",
-        muscle:"Petto / Tricipiti / Deltoidi ant.",
-        type:"comp", warmup:true, method:"buffer", methodLabel:"Buffer RIR",
-        note:"Traiettoria libera, rispetta la spalla. RIR 2 prime serie → RIR 1 ultima.",
-        startKg: "Rif: W1-4 ~24-26kg cad. · W5-8 ~26-28kg · Peak ~28-30kg"
-      },
-      {
-        id:"A3", name:"Leg Extension",
-        muscle:"Quadricipiti (isolamento)",
-        type:"iso", warmup:false, method:"cedimento", methodLabel:"Cedimento",
-        note:"Cadenza 2-0-2. Cedimento solo ultima serie. No dolore al ginocchio.",
-        startKg: "Rif: W1-4 ~45kg · W5-8 ~48kg"
-      },
-      {
-        id:"A4", name:"Croci Cavi (basso → alto)",
-        muscle:"Petto medio-alto",
-        type:"iso", warmup:false, method:"cedimento", methodLabel:"Cedimento",
-        note:"Picco contrazione in apertura. Ultima serie al cedimento.",
-        startKg: "Rif: W1-4 ~8-10kg cad. · W5-8 ~10-12kg"
-      },
-      {
-        id:"A5", name:"Alzate Laterali Cavi (basso)",
-        muscle:"Deltoidi laterali",
-        type:"iso", warmup:false, method:"cedimento", methodLabel:"Cedimento",
-        note:"Cavo basso → tensione costante lungo tutto il range.",
-        startKg: "Rif: W1-4 ~6-8kg · W5-8 ~8-10kg"
-      },
-    ]
-  },
-
-  B: {
-    name: "Allenamento B",
-    meta: "Tirata · Femorali dominante",
-    duration: "~55-65 min",
-    color: "#3cffb4",
-    exercises: [
-      {
-        id:"B1", name:"Stacco Rumeno Bilanciere",
-        muscle:"Femorali / Glutei / Erettori",
-        type:"comp", warmup:true, method:"buffer", methodLabel:"Buffer RIR",
-        note:"Warm-up: 1×10 a vuoto + 1×8 leggero. Bilanciere vicino alle gambe, stop a metà tibia.",
-        startKg: "Rif: W1-4 ~70kg · W5-8 ~74-76kg · Peak ~80kg"
-      },
-      {
-        id:"B2", name:"Trazioni / Lat Machine",
-        muscle:"Dorsali / Bicipiti / Romboidi",
-        type:"comp", warmup:true, method:"buffer", methodLabel:"Buffer RIR",
-        note:"Trazioni se riesci 8+ reps pulite, altrimenti lat machine. Presa prona, larghezza spalle.",
-        startKg: "Rif: W1-4 ~55-60kg (lat machine) · W5-8 ~60-65kg"
-      },
-      {
-        id:"B3", name:"Rematore Manubrio (unilaterale)",
-        muscle:"Dorsali / Romboidi / Bicipiti",
-        type:"comp", warmup:false, method:"buffer", methodLabel:"Buffer RIR",
-        note:"Appoggio su panca, schiena parallela. Gomito vicino al corpo, tira verso l'anca.",
-        startKg: "Rif: W1-4 ~24-26kg cad. · W5-8 ~26-28kg"
-      },
-      {
-        id:"B4", name:"Leg Curl Sdraiato",
-        muscle:"Femorali (isolamento)",
-        type:"iso", warmup:false, method:"cedimento", methodLabel:"Cedimento",
-        note:"Cadenza 2-1-2, picco contrazione in alto. Ultima serie al cedimento controllato.",
-        startKg: "Rif: W1-4 ~30-35kg · W5-8 ~35-38kg"
-      },
-      {
-        id:"B5", name:"Curl Manubri (alternato)",
-        muscle:"Bicipiti / Brachiale",
-        type:"iso", warmup:false, method:"cedimento", methodLabel:"Cedimento",
-        note:"Supinazione completa in cima. Ultima serie al cedimento, no slancio.",
-        startKg: "Rif: W1-4 ~12-14kg cad. · W5-8 ~14-16kg"
-      },
-      {
-        id:"B6", name:"Facepull Cavi (corda)",
-        muscle:"Deltoidi post. / Trapezi / Rotatori",
-        type:"posturale", warmup:false, method:"buffer", methodLabel:"Buffer RIR",
-        note:"⚑ POSTURALE — non skippare mai. Cavo altezza viso, gomiti alti, apertura esterna.",
-        startKg: "Rif: ~12-15kg (sempre leggero, focus tecnica)"
-      },
-    ]
-  },
-
-  C: {
-    name: "Allenamento C",
-    meta: "Fullbody composito",
-    duration: "~50-60 min",
-    color: "#ff6b3c",
-    exercises: [
-      {
-        id:"C1", name:"Pressa Pendulum (piedi alti)",
-        muscle:"Glutei / Femorali — variante posteriore",
-        type:"comp", warmup:true, method:"buffer", methodLabel:"Buffer RIR",
-        note:"Piedi in alto sulla piattaforma → enfasi glutei/femorali. Variante rispetto ad A. ⚠ ginocchio.",
-        startKg: "Rif: W1-4 ~140-150kg · W5-8 ~150-160kg"
-      },
-      {
-        id:"C2", name:"Panca Inclinata Manubri (30°)",
-        muscle:"Petto alto / Deltoidi ant.",
-        type:"comp", warmup:false, method:"buffer", methodLabel:"Buffer RIR",
-        note:"30° max — oltre si sposta sulle spalle. Manubri, traiettoria libera.",
-        startKg: "Rif: W1-4 ~20-22kg cad. · W5-8 ~22-24kg"
-      },
-      {
-        id:"C3", name:"Pullover Cavi (straight-arm)",
-        muscle:"Dorsali / Serrato / Core",
-        type:"comp", warmup:false, method:"superserie", methodLabel:"Superserie",
-        note:"↔ Superserie con C4. Braccia quasi tese, tira verso i fianchi.",
-        startKg: "Rif: W1-4 ~22-25kg · W5-8 ~25-28kg"
-      },
-      {
-        id:"C4", name:"Shoulder Press Macchina",
-        muscle:"Deltoidi / Trapezi superiori",
-        type:"comp", warmup:false, method:"superserie", methodLabel:"Superserie",
-        superNote:"Con C3 — recupero 90s dopo",
-        note:"Macchina guidata: sicura per la spalla. Recupero 90s dopo la superserie.",
-        startKg: "Rif: W1-4 ~30-35kg · W5-8 ~33-38kg"
-      },
-      {
-        id:"C5", name:"Hammer Curl Manubri",
-        muscle:"Bicipiti / Brachiale / Brachioradiale",
-        type:"iso", warmup:false, method:"cedimento", methodLabel:"Cedimento",
-        note:"Presa neutra. Colpisce brachiale → spessore braccio. Ultima serie al cedimento.",
-        startKg: "Rif: W1-4 ~12-14kg cad. · W5-8 ~14-16kg"
-      },
-      {
-        id:"C6", name:"Pushdown Tricipiti Cavi (corda)",
-        muscle:"Tricipiti (isolamento)",
-        type:"iso", warmup:false, method:"cedimento", methodLabel:"Cedimento",
-        note:"Gomiti fissi ai fianchi. Apertura corda in basso, estensione completa.",
-        startKg: "Rif: W1-4 ~15-18kg · W5-8 ~18-20kg"
-      },
-    ]
-  }
-};
 
 // ═══════════════════════════════════════════════
 // STATE
@@ -1341,23 +1131,34 @@ function renderDashboard() {
   const weekIndexInPhase = phase.weeks.indexOf(w) + 1;
   const progress = (weekIndexInPhase / totalWeeksInPhase) * 100;
 
+  // nome utente e descrizione dal JSON
+  const heroEl = document.getElementById('heroName');
+  if (heroEl) heroEl.textContent = PROGRAM.meta.userName || PROGRAM.meta.name;
+  const descEl = document.getElementById('programDescription');
+  if (descEl) descEl.textContent = PROGRAM.meta.description;
+
   document.getElementById('phaseLabel').textContent = phase.rpe + ' · ' + phase.rirNote;
   document.getElementById('phaseName').textContent = phase.label;
   document.getElementById('phaseProgress').style.width = progress + '%';
-  document.getElementById('phaseWeeks').textContent = `Settimana ${w} di 12 · ${weekIndexInPhase}° settimana nella fase`;
+  document.getElementById('phaseWeeks').textContent = `Settimana ${w} di ${PROGRAM.meta.weeks} · ${weekIndexInPhase}° settimana nella fase`;
 
   document.getElementById('statTotal').textContent = state.sessions.length;
-  document.getElementById('statWeek').textContent = w;
+  document.getElementById('statWeek').textContent  = w;
 
-  // durata stimata dinamica
-  ['A','B','C'].forEach(l => {
-    const wo = WORKOUTS[l];
+  // card allenamenti — tutto dal JSON
+  PROGRAM.meta.sequence.forEach(l => {
+    const wo = PROGRAM.workouts[l];
     const mins = estimateDuration(l, w);
-    const el = document.getElementById('meta' + l);
-    if (el) el.textContent = wo.meta + ` · ~${mins} min`;
+    const ll = l.toLowerCase();
+    const nameEl = document.getElementById('wname' + l);
+    const metaEl = document.getElementById('meta' + l);
+    const letterEl = document.getElementById('letter' + l);
+    if (nameEl) nameEl.textContent = wo.name;
+    if (metaEl) metaEl.textContent = wo.meta + ` · ~${mins} min`;
+    if (letterEl) letterEl.style.color = wo.color;
   });
 
-  // prossimo allenamento — evidenzia la card giusta
+  // prossimo allenamento
   document.querySelectorAll('.workout-card').forEach(c => c.classList.remove('next'));
   const nextCard = document.querySelector(`.workout-card.${state.nextWorkout.toLowerCase()}`);
   if (nextCard) nextCard.classList.add('next');
@@ -1423,7 +1224,7 @@ function calcStreak() {
   let streak = 1;
   for (let i = 1; i < sorted.length; i++) {
     const diff = (new Date(sorted[i-1].date) - new Date(sorted[i].date)) / 86400000;
-    if (diff <= 3) streak++;
+    if (diff <= 7) streak++;
     else break;
   }
   return streak;
@@ -1433,7 +1234,7 @@ function calcStreak() {
 // WORKOUT VIEW
 // ═══════════════════════════════════════════════
 function renderWorkoutView(letter) {
-  const wo = WORKOUTS[letter];
+  const wo = PROGRAM.workouts[letter];
   const phase = getPhaseForWeek(state.currentWeek);
   const w = state.currentWeek;
 
@@ -1446,7 +1247,7 @@ function renderWorkoutView(letter) {
   document.getElementById('wvPhaseChip').textContent = phase.name;
 
   // week selector
-  document.getElementById('weekSelector').innerHTML = Array.from({length:12},(_,i) => {
+  document.getElementById('weekSelector').innerHTML = Array.from({length: PROGRAM.meta.weeks},(_,i) => {
     const wk = i+1;
     const ph = getPhaseForWeek(wk);
     const isDeload = ph.name === 'Deload';
@@ -1507,7 +1308,7 @@ function renderWorkoutView(letter) {
     const warmupBadge = ex.warmup ? '<span class="ex-warmup">🔥 Riscaldamento</span>' : '';
     const superNote   = ex.superNote ? `<div style="font-size:10px;color:var(--accent);margin-top:2px">↔ ${ex.superNote}</div>` : '';
     const exNote      = ex.note      ? `<div style="font-size:10px;color:var(--accent3);margin-top:3px">⚑ ${ex.note}</div>` : '';
-    const startKgHint = ex.startKg   ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">${ex.startKg}</div>` : '';
+    const startKgHint = ex.refKg ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">Rif: ${getRefKg(ex, state.currentWeek)}</div>` : '';
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -1556,7 +1357,7 @@ function markSetDone(exId, setNum) {
 }
 
 function updateDraft() {
-  const wo = WORKOUTS[currentWorkout];
+  const wo = PROGRAM.workouts[currentWorkout];
   const w  = state.currentWeek;
 
   const exercisesLog = wo.exercises.map(ex => {
@@ -1605,27 +1406,28 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── FINE ALLENAMENTO ────────────────────────────
-// Segna la sessione come completata, avanza la sequenza A→B→C
+// Segna la sessione come completata, avanza la sequenza dal JSON
 function finishWorkout() {
   if (!state.draft) {
     showToast('Nessun dato inserito', 'error');
     return;
   }
 
-  // sposta draft → sessioni
   const session = { ...state.draft, completedAt: new Date().toISOString() };
   state.sessions.push(session);
   state.draft = null;
   localStorage.removeItem('fitnessTracker_draft');
 
-  // avanza sequenza A→B→C, aggiorna settimana se ciclo completato
-  const seq = ['A','B','C'];
+  // sequenza e avanzamento settimana dal JSON
+  const seq = PROGRAM.meta.sequence;
+  const advanceAfter = PROGRAM.meta.weekAdvanceAfter;
   const idx = seq.indexOf(currentWorkout);
-  const next = seq[(idx + 1) % 3];
+  const next = seq[(idx + 1) % seq.length];
   state.nextWorkout = next;
-  if (next === 'A') {
-    // completato un ciclo completo → settimana successiva
-    state.currentWeek = Math.min(state.currentWeek + 1, 12);
+
+  // avanza settimana solo dopo l'allenamento definito in weekAdvanceAfter
+  if (currentWorkout === advanceAfter) {
+    state.currentWeek = Math.min(state.currentWeek + 1, PROGRAM.meta.weeks);
   }
 
   saveState();
@@ -1639,9 +1441,11 @@ function finishWorkout() {
 function loadSettingsUI() {
   document.getElementById('githubToken').value = state.settings.githubToken || '';
   document.getElementById('gistId').value      = state.settings.gistId      || '';
-  document.getElementById('currentWeekInput').value = state.currentWeek;
-
-  // mostra link di condivisione
+  const weekInput = document.getElementById('currentWeekInput');
+  if (weekInput) {
+    weekInput.value = state.currentWeek;
+    weekInput.max   = PROGRAM?.meta?.weeks || 12;
+  }
   const linkEl = document.getElementById('shareLink');
   if (linkEl) linkEl.value = buildShareLink();
 }
@@ -1658,7 +1462,7 @@ function saveSettings() {
 
 function setCurrentWeek() {
   const val = parseInt(document.getElementById('currentWeekInput').value);
-  if (val >= 1 && val <= 12) {
+  if (val >= 1 && val <= PROGRAM.meta.weeks) {
     state.currentWeek = val;
     saveState();
     showToast('Settimana aggiornata a W' + val, 'success');
@@ -1803,10 +1607,16 @@ function formatDate(iso) {
 // ═══════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════
-loadState();
-readHashConfig();   // token/gistId dall'URL hash (sopravvive alla cancellazione del localStorage)
-renderDashboard();
-if (state.settings.githubToken) loadFromGist();
+async function init() {
+  loadState();
+  readHashConfig();
+  const ok = await loadProgram();
+  if (!ok) return;
+  renderDashboard();
+  if (state.settings.githubToken) loadFromGist();
+}
+
+init();
 </script>
 </body>
 </html>
