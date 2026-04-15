@@ -55,7 +55,7 @@
   .header-back:hover { background: var(--surface3); }
   .header h1 {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 20px;
+    font-size: 18px;
     letter-spacing: 1px;
     color: var(--accent);
     flex: 1;
@@ -213,7 +213,8 @@
     font-weight: 700;
     letter-spacing: 1.5px;
     color: var(--accent);
-    padding: 0 4px 6px;
+    padding: 0px 4px 0px;
+    margin-bottom: -6px;
     display: none;
   }
   .next-label.visible { display: block; }
@@ -733,28 +734,6 @@
     </div>
   </div>
 
-  <div class="divider mt-8"></div>
-  <div class="section-title">Ultime sessioni</div>
-  <div class="sessions-list" id="recentSessions">
-    <div class="prog-empty">
-      <span class="material-icons">history</span>
-      Nessuna sessione registrata
-    </div>
-  </div>
-
-  <div class="divider mt-8"></div>
-  <div class="section-title">Progressi volume</div>
-  <div class="progress-section">
-    <div class="progress-card">
-      <div class="pc-title">Tonellaggio settimanale (KG)</div>
-      <div id="progressChart">
-        <div class="prog-empty">
-          <span class="material-icons">show_chart</span>
-          I dati appariranno dopo le prime sessioni
-        </div>
-      </div>
-    </div>
-  </div>
 </div>
 
 <!-- WORKOUT VIEW -->
@@ -815,6 +794,10 @@
     <button class="btn-primary ripple" onclick="finishWorkout()">
       <span class="material-icons">check_circle</span>
       Fine Allenamento
+    </button>
+    <button class="btn-secondary ripple" onclick="undoFinish()" style="margin-top:10px">
+      <span class="material-icons">undo</span>
+      Annulla Fine Allenamento
     </button>
     <button class="btn-secondary ripple" onclick="goBack()">
       <span class="material-icons">arrow_back</span>
@@ -1037,21 +1020,22 @@ function estimateDuration(letter, w) {
 // ═══════════════════════════════════════════════
 let state = {
   currentWeek: 1,
-  nextWorkout: 'A',       // quale allenamento tocca dopo
-  sessions: [],           // storico sessioni completate
-  draft: null,            // sessione in corso (autosave)
+  nextWorkout: 'A',
+  logs: {},   // { "A_W1": { exercises, fatigue, notes, date, completed } }
   settings: { githubToken: "", gistId: "" }
 };
 
 let currentWorkout = null;
-let currentView = 'dashboard';
+let currentView    = 'dashboard';
 
-// ── SESSION KEY ─────────────────────────────────
-// Chiave univoca: allenamento + settimana + data calendario
-// Permette di ripetere A W1 in settimane calendario diverse
-function sessionKey(letter, week) {
-  const today = new Date().toISOString().split('T')[0];
-  return `${letter}_W${week}_${today}`;
+// chiave log: allenamento + settimana (unica, si sovrascrive)
+function logKey(letter, week) {
+  return `${letter}_W${week}`;
+}
+
+// conteggio allenamenti completati
+function countCompleted() {
+  return Object.values(state.logs).filter(l => l.completed).length;
 }
 
 // ═══════════════════════════════════════════════
@@ -1059,29 +1043,14 @@ function sessionKey(letter, week) {
 // ═══════════════════════════════════════════════
 function loadState() {
   try {
-    const s = localStorage.getItem('fitnessTracker_v3');
+    const s = localStorage.getItem('fitnessTracker_v4');
     if (s) state = { ...state, ...JSON.parse(s) };
   } catch(e) {}
 }
 
 function saveState() {
-  localStorage.setItem('fitnessTracker_v3', JSON.stringify(state));
+  localStorage.setItem('fitnessTracker_v4', JSON.stringify(state));
   syncToGist();
-}
-
-// Autosave del draft (solo localStorage, senza Gist per non spammare)
-function saveDraft() {
-  localStorage.setItem('fitnessTracker_draft', JSON.stringify(state.draft));
-}
-
-function loadDraft(letter, week) {
-  try {
-    const d = localStorage.getItem('fitnessTracker_draft');
-    if (!d) return null;
-    const draft = JSON.parse(d);
-    if (draft && draft.workout === letter && draft.week === week) return draft;
-  } catch(e) {}
-  return null;
 }
 
 // ═══════════════════════════════════════════════
@@ -1148,36 +1117,37 @@ function goBack() {
 function renderDashboard() {
   const w = state.currentWeek;
   const phase = getPhaseForWeek(w);
+  if (!phase) return;
   const totalWeeksInPhase = phase.weeks.length;
-  const weekIndexInPhase = phase.weeks.indexOf(w) + 1;
+  const weekIndexInPhase  = phase.weeks.indexOf(w) + 1;
   const progress = (weekIndexInPhase / totalWeeksInPhase) * 100;
 
   // nome utente e descrizione dal JSON
-  const heroEl = document.getElementById('heroName');
-  if (heroEl) heroEl.textContent = PROGRAM.meta.userName || PROGRAM.meta.name;
-  const typeEl = document.getElementById('programType');
-  if (typeEl) typeEl.textContent = PROGRAM.meta.programType || '';
+  const heroEl   = document.getElementById('heroName');
+  const typeEl   = document.getElementById('programType');
   const detailEl = document.getElementById('programDetail');
+  if (heroEl)   heroEl.textContent   = PROGRAM.meta.userName || PROGRAM.meta.name;
+  if (typeEl)   typeEl.textContent   = PROGRAM.meta.programType   || '';
   if (detailEl) detailEl.textContent = PROGRAM.meta.programDetail || '';
 
-  document.getElementById('phaseLabel').textContent = phase.rpe + ' · ' + phase.rirNote;
-  document.getElementById('phaseName').textContent = phase.label;
+  document.getElementById('phaseLabel').textContent    = phase.rpe + ' · ' + phase.rirNote;
+  document.getElementById('phaseName').textContent     = phase.label;
   document.getElementById('phaseProgress').style.width = progress + '%';
-  document.getElementById('phaseWeeks').textContent = `Settimana ${w} di ${PROGRAM.meta.weeks} · ${weekIndexInPhase}° settimana nella fase`;
+  document.getElementById('phaseWeeks').textContent    = `Settimana ${w} di ${PROGRAM.meta.weeks} · ${weekIndexInPhase}° settimana nella fase`;
 
-  document.getElementById('statTotal').textContent = state.sessions.length;
-  document.getElementById('statWeek').textContent  = w;
+  document.getElementById('statTotal').textContent  = countCompleted();
+  document.getElementById('statWeek').textContent   = w;
+  document.getElementById('statStreak').textContent = calcStreak();
 
   // card allenamenti — tutto dal JSON
   PROGRAM.meta.sequence.forEach(l => {
-    const wo = PROGRAM.workouts[l];
-    const mins = estimateDuration(l, w);
-    const ll = l.toLowerCase();
-    const nameEl = document.getElementById('wname' + l);
-    const metaEl = document.getElementById('meta' + l);
+    const wo      = PROGRAM.workouts[l];
+    const mins    = estimateDuration(l, w);
+    const nameEl   = document.getElementById('wname'  + l);
+    const metaEl   = document.getElementById('meta'   + l);
     const letterEl = document.getElementById('letter' + l);
-    if (nameEl) nameEl.textContent = wo.name;
-    if (metaEl) metaEl.textContent = wo.meta + ` · ~${mins} min`;
+    if (nameEl)   nameEl.textContent   = wo.name;
+    if (metaEl)   metaEl.textContent   = wo.meta + ` · ~${mins} min`;
     if (letterEl) letterEl.style.color = wo.color;
   });
 
@@ -1188,65 +1158,12 @@ function renderDashboard() {
   if (nextLabelEl) nextLabelEl.classList.add('visible');
   const nextCard = document.querySelector(`.workout-card.${state.nextWorkout.toLowerCase()}`);
   if (nextCard) nextCard.classList.add('next');
-
-  // streak
-  document.getElementById('statStreak').textContent = calcStreak();
-
-  // ultime sessioni
-  const container = document.getElementById('recentSessions');
-  const recent = [...state.sessions].reverse().slice(0, 5);
-  if (recent.length === 0) {
-    container.innerHTML = '<div class="prog-empty"><span class="material-icons">history</span>Nessuna sessione registrata</div>';
-  } else {
-    container.innerHTML = recent.map(s => {
-      const rpeColors = ['','#44ff88','#e8ff3c','#ff9933','#ff4444'];
-      const rpeEmoji  = ['','😤','🙂','😮‍💨','😵'];
-      return `<div class="session-item">
-        <div class="si-left">
-          <div class="si-date">${formatDate(s.date)}</div>
-          <div class="si-name">Allenamento ${s.workout} · Settimana ${s.week}</div>
-        </div>
-        <div class="si-right">
-          <div class="si-rpe" style="color:${rpeColors[s.fatigue]||'var(--text3)'}">${rpeEmoji[s.fatigue]||'—'}</div>
-          <div class="si-rpe-lbl">${['','Fresco','Buono','Stanco','Esausto'][s.fatigue]||'—'}</div>
-        </div>
-      </div>`;
-    }).join('');
-  }
-
-  renderProgressChart();
-}
-
-function renderProgressChart() {
-  if (state.sessions.length < 2) return;
-  const byWeek = {};
-  state.sessions.forEach(s => {
-    const wk = s.week || 1;
-    if (!byWeek[wk]) byWeek[wk] = 0;
-    s.exercises && s.exercises.forEach(ex => {
-      ex.sets && ex.sets.forEach(set => {
-        if (set.kg && set.reps) byWeek[wk] += parseFloat(set.kg) * parseInt(set.reps);
-      });
-    });
-  });
-  const weeks = Object.keys(byWeek).sort((a,b) => a-b);
-  if (weeks.length < 2) return;
-  const maxVal = Math.max(...Object.values(byWeek));
-  document.getElementById('progressChart').innerHTML = `
-    <div style="display:flex;gap:6px;align-items:flex-end;height:80px;padding-top:8px">
-      ${weeks.map(w => {
-        const h = Math.round((byWeek[w]/maxVal)*72);
-        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
-          <div style="height:${h}px;background:var(--accent);border-radius:4px 4px 0 0;width:100%;min-height:3px;opacity:.85"></div>
-          <div style="font-size:9px;color:var(--text3)">W${w}</div>
-        </div>`;
-      }).join('')}
-    </div>`;
 }
 
 function calcStreak() {
-  if (!state.sessions.length) return 0;
-  const sorted = [...state.sessions].sort((a,b) => new Date(b.date)-new Date(a.date));
+  const completed = Object.values(state.logs).filter(l => l.completed && l.date);
+  if (!completed.length) return 0;
+  const sorted = completed.sort((a,b) => new Date(b.date)-new Date(a.date));
   let streak = 1;
   for (let i = 1; i < sorted.length; i++) {
     const diff = (new Date(sorted[i-1].date) - new Date(sorted[i].date)) / 86400000;
@@ -1280,13 +1197,13 @@ function renderWorkoutView(letter) {
     return `<button class="week-btn ${isDeload?'deload':''} ${wk===w?'active':''}" onclick="changeWeek(${wk})">${isDeload?'⚡ ':''}W${wk}</button>`;
   }).join('');
 
-  // carica draft se esiste per questo allenamento+settimana
-  const draft = loadDraft(letter, w);
-  if (draft) {
-    // ripristina fatica e note dal draft
-    if (draft.fatigue) setFatigue(draft.fatigue);
+  // carica log esistente per questo allenamento+settimana
+  const key     = logKey(letter, w);
+  const logData = state.logs[key] || null;
+  if (logData) {
+    if (logData.fatigue) setFatigue(logData.fatigue);
     const notesEl = document.getElementById('sessionNotes');
-    if (notesEl && draft.notes) notesEl.value = draft.notes;
+    if (notesEl && logData.notes) notesEl.value = logData.notes;
   }
 
   // esercizi
@@ -1299,12 +1216,12 @@ function renderWorkoutView(letter) {
 
     let setsHtml = '';
     for (let s = 1; s <= sets; s++) {
-      // recupera valore dal draft se presente
-      const draftEx = draft?.exercises?.find(e => e.id === ex.id);
-      const draftSet = draftEx?.sets?.find(ds => ds.set === s);
-      const valKg   = draftSet?.kg   || '';
-      const valReps = draftSet?.reps || '';
-      const valRir  = draftSet?.rir  || '';
+      // recupera valore dal log se presente
+      const logEx  = logData?.exercises?.find(e => e.id === ex.id);
+      const logSet = logEx?.sets?.find(ds => ds.set === s);
+      const valKg   = logSet?.kg   || '';
+      const valReps = logSet?.reps || '';
+      const valRir  = logSet?.rir  || '';
       const done = valKg && valReps;
 
       setsHtml += `<div class="log-set">
@@ -1384,29 +1301,24 @@ function changeWeek(w) {
 }
 
 // ── AUTOSAVE ────────────────────────────────────
-// Chiamato ad ogni oninput — aggiorna il draft e salva
 function onInputChange(exId, setNum) {
   markSetDone(exId, setNum);
-  updateDraft();
+  updateLog();
 }
 
 function markSetDone(exId, setNum) {
-  const kg   = document.getElementById(`kg_${exId}_${setNum}`)?.value;
-  const reps = document.getElementById(`reps_${exId}_${setNum}`)?.value;
+  const kg    = document.getElementById(`kg_${exId}_${setNum}`)?.value;
+  const reps  = document.getElementById(`reps_${exId}_${setNum}`)?.value;
   const label = document.getElementById(`setStatus_${exId}_${setNum}`);
   if (!label) return;
-  if (kg && reps) {
-    label.classList.add('set-done');
-    label.textContent = '✓' + setNum;
-  } else {
-    label.classList.remove('set-done');
-    label.textContent = 'S' + setNum;
-  }
+  if (kg && reps) { label.classList.add('set-done');    label.textContent = '✓' + setNum; }
+  else            { label.classList.remove('set-done');  label.textContent = 'S' + setNum; }
 }
 
-function updateDraft() {
-  const wo = PROGRAM.workouts[currentWorkout];
-  const w  = state.currentWeek;
+function updateLog() {
+  const wo  = PROGRAM.workouts[currentWorkout];
+  const w   = state.currentWeek;
+  const key = logKey(currentWorkout, w);
 
   const exercisesLog = wo.exercises.map(ex => {
     const scheme = getExScheme(ex, w);
@@ -1422,58 +1334,56 @@ function updateDraft() {
     return { id: ex.id, name: ex.name, sets };
   });
 
-  state.draft = {
-    key:      sessionKey(currentWorkout, w),
-    workout:  currentWorkout,
-    week:     w,
-    phase:    getPhaseForWeek(w).name,
-    date:     new Date().toISOString(),
-    fatigue:  state.draft?.fatigue || 0,
-    notes:    document.getElementById('sessionNotes')?.value || '',
-    exercises: exercisesLog
+  // preserva completed se già true
+  const existing = state.logs[key] || {};
+  state.logs[key] = {
+    ...existing,
+    workout:   currentWorkout,
+    week:      w,
+    phase:     getPhaseForWeek(w).name,
+    date:      existing.date || new Date().toISOString(),
+    fatigue:   existing.fatigue || 0,
+    notes:     document.getElementById('sessionNotes')?.value || '',
+    exercises: exercisesLog,
+    completed: existing.completed || false,
   };
 
-  saveDraft();
-  // sync Gist ad ogni input (i recuperi tra serie sono > 1 min)
-  syncToGist();
+  saveState();
   updateSyncStatus(true, 'salvato');
 }
 
 function setFatigue(val) {
-  if (state.draft) state.draft.fatigue = val;
+  const key = logKey(currentWorkout, state.currentWeek);
+  if (state.logs[key]) state.logs[key].fatigue = val;
   document.querySelectorAll('.fatigue-btn').forEach((b,i) => {
     b.classList.toggle('selected', i+1 === val);
   });
-  if (currentView === 'workout') updateDraft();
+  if (currentView === 'workout') updateLog();
 }
 
 // Note — salva in tempo reale
 document.addEventListener('DOMContentLoaded', () => {
   const notesEl = document.getElementById('sessionNotes');
-  if (notesEl) notesEl.addEventListener('input', () => updateDraft());
+  if (notesEl) notesEl.addEventListener('input', () => { if (currentView === 'workout') updateLog(); });
 });
 
 // ── FINE ALLENAMENTO ────────────────────────────
-// Segna la sessione come completata, avanza la sequenza dal JSON
 function finishWorkout() {
-  if (!state.draft) {
+  const key = logKey(currentWorkout, state.currentWeek);
+  if (!state.logs[key]) {
     showToast('Nessun dato inserito', 'error');
     return;
   }
 
-  const session = { ...state.draft, completedAt: new Date().toISOString() };
-  state.sessions.push(session);
-  state.draft = null;
-  localStorage.removeItem('fitnessTracker_draft');
+  state.logs[key].completed    = true;
+  state.logs[key].completedAt  = new Date().toISOString();
 
-  // sequenza e avanzamento settimana dal JSON
-  const seq = PROGRAM.meta.sequence;
+  const seq          = PROGRAM.meta.sequence;
   const advanceAfter = PROGRAM.meta.weekAdvanceAfter;
-  const idx = seq.indexOf(currentWorkout);
-  const next = seq[(idx + 1) % seq.length];
-  state.nextWorkout = next;
+  const idx          = seq.indexOf(currentWorkout);
+  const next         = seq[(idx + 1) % seq.length];
+  state.nextWorkout  = next;
 
-  // avanza settimana solo dopo l'allenamento definito in weekAdvanceAfter
   if (currentWorkout === advanceAfter) {
     state.currentWeek = Math.min(state.currentWeek + 1, PROGRAM.meta.weeks);
   }
@@ -1481,6 +1391,38 @@ function finishWorkout() {
   saveState();
   showToast(`Allenamento ${currentWorkout} completato! 💪 Prossimo: ${next}`, 'success');
   setTimeout(() => goBack(), 1500);
+}
+
+// ── ANNULLA FINE ALLENAMENTO ─────────────────────
+function undoFinish() {
+  // torna all'allenamento precedente nella sequenza
+  const seq = PROGRAM.meta.sequence;
+  const advanceAfter = PROGRAM.meta.weekAdvanceAfter;
+  const currentIdx = seq.indexOf(state.nextWorkout);
+  const prevWorkout = seq[(currentIdx - 1 + seq.length) % seq.length];
+
+  // se la settimana è avanzata (l'ultimo completato era weekAdvanceAfter), torna indietro
+  const lastKey = logKey(prevWorkout, state.currentWeek);
+  const prevKey = logKey(prevWorkout, state.currentWeek - 1);
+  let targetWeek = state.currentWeek;
+
+  if (prevWorkout === advanceAfter && state.currentWeek > 1) {
+    // la settimana era appena avanzata — torna alla settimana precedente
+    targetWeek = state.currentWeek - 1;
+    state.currentWeek = targetWeek;
+  }
+
+  // segna l'allenamento come non completato
+  const key = logKey(prevWorkout, targetWeek);
+  if (state.logs[key]) {
+    state.logs[key].completed   = false;
+    state.logs[key].completedAt = null;
+  }
+
+  state.nextWorkout = prevWorkout;
+  saveState();
+  showToast(`Ripristinato — riprendi ${prevWorkout} W${targetWeek}`, 'success');
+  openWorkout(prevWorkout);
 }
 
 // ═══════════════════════════════════════════════
@@ -1560,7 +1502,7 @@ async function syncToGist(test = false) {
       state.settings.gistId = gistId;
       const el = document.getElementById('gistId');
       if (el) el.value = gistId;
-      localStorage.setItem('fitnessTracker_v3', JSON.stringify(state));
+      localStorage.setItem('fitnessTracker_v4', JSON.stringify(state));
       if (test) showToast('Gist creato! ID: ' + gistId.slice(0,8) + '…', 'success');
     } else {
       // Aggiorna Gist — sempre fitness-data, program solo se presente
@@ -1597,11 +1539,13 @@ async function loadFromGist() {
     const dataContent = data.files['fitness-data.json']?.content;
     if (dataContent) {
       const remote = JSON.parse(dataContent);
-      if (remote.sessions && remote.sessions.length >= state.sessions.length) {
-        state.sessions    = remote.sessions;
+      const remoteCount = Object.values(remote.logs || {}).filter(l => l.completed).length;
+      const localCount  = countCompleted();
+      if (remoteCount >= localCount) {
+        state.logs        = remote.logs        || {};
         state.currentWeek = remote.currentWeek || state.currentWeek;
         state.nextWorkout = remote.nextWorkout  || state.nextWorkout;
-        localStorage.setItem('fitnessTracker_v3', JSON.stringify(state));
+        localStorage.setItem('fitnessTracker_v4', JSON.stringify(state));
       }
     }
 
@@ -1648,8 +1592,8 @@ function handleImport(e) {
   reader.onload = ev => {
     try {
       const data = JSON.parse(ev.target.result);
-      if (data.sessions) {
-        state.sessions    = data.sessions;
+      if (data.logs) {
+        state.logs        = data.logs;
         state.currentWeek = data.currentWeek || state.currentWeek;
         state.nextWorkout = data.nextWorkout  || state.nextWorkout;
         saveState();
