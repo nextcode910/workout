@@ -364,6 +364,15 @@
     padding: 14px 16px 16px;
     border-bottom: 1px solid var(--border);
     margin-bottom: 4px;
+    transition: all .3s;
+  }
+  .timer-wrap.sticky {
+    position: sticky;
+    top: 56px; /* altezza header */
+    z-index: 90;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 4px 12px rgba(0,0,0,.4);
   }
   .timer-main-row {
     display: flex;
@@ -983,6 +992,19 @@
   </div>
 
   <div class="session-footer">
+    <label>Orario allenamento</label>
+    <div style="display:flex;gap:10px;margin-bottom:18px">
+      <div style="flex:1">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.6px">Inizio</div>
+        <input type="time" class="settings-input" id="sessionStart" style="text-align:center;font-size:18px;font-family:'DM Sans',sans-serif;padding:10px">
+      </div>
+      <div style="display:flex;align-items:center;padding-top:20px;color:var(--text3);font-size:20px">→</div>
+      <div style="flex:1">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.6px">Fine</div>
+        <input type="time" class="settings-input" id="sessionEnd" style="text-align:center;font-size:18px;font-family:'DM Sans',sans-serif;padding:10px">
+      </div>
+    </div>
+
     <label>Come ti senti al termine?</label>
     <div class="fatigue-row">
       <button class="fatigue-btn ripple" onclick="setFatigue(1)">
@@ -1455,6 +1477,17 @@ function renderWorkoutView(letter) {
     if (logData.fatigue) setFatigue(logData.fatigue);
     const notesEl = document.getElementById('sessionNotes');
     if (notesEl && logData.notes) notesEl.value = logData.notes;
+    const startEl = document.getElementById('sessionStart');
+    const endEl   = document.getElementById('sessionEnd');
+    if (startEl) startEl.value = logData.startTime || '';
+    if (endEl)   endEl.value   = logData.endTime   || '';
+  } else {
+    // prima apertura — pre-compila orario inizio con ora attuale
+    const startEl = document.getElementById('sessionStart');
+    if (startEl) {
+      const now = new Date();
+      startEl.value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    }
   }
 
   // esercizi
@@ -1546,17 +1579,19 @@ let _timerInterval = null;
 let _timerRunning  = false;
 
 function timerPlayPause() {
-  if (_timerSeconds <= 0 && !_timerRunning) return; // niente da avviare
+  if (_timerSeconds <= 0 && !_timerRunning) return;
   if (_timerRunning) {
     clearInterval(_timerInterval);
     _timerRunning = false;
     document.getElementById('timerPlayIcon').textContent = 'play_arrow';
     document.getElementById('timerDisplay').classList.remove('running');
+    document.getElementById('timerWrap').classList.remove('sticky');
   } else {
     _timerRunning = true;
     document.getElementById('timerPlayIcon').textContent = 'pause';
     document.getElementById('timerDisplay').classList.add('running');
     document.getElementById('timerDisplay').classList.remove('finished');
+    document.getElementById('timerWrap').classList.add('sticky');
     _timerInterval = setInterval(() => {
       _timerSeconds--;
       _renderTimer();
@@ -1566,7 +1601,7 @@ function timerPlayPause() {
         document.getElementById('timerPlayIcon').textContent = 'play_arrow';
         document.getElementById('timerDisplay').classList.remove('running');
         document.getElementById('timerDisplay').classList.add('finished');
-        // vibrazione se supportata
+        document.getElementById('timerWrap').classList.remove('sticky');
         if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
       }
     }, 1000);
@@ -1579,12 +1614,12 @@ function timerReset() {
   _timerSeconds  = 0;
   document.getElementById('timerPlayIcon').textContent = 'play_arrow';
   document.getElementById('timerDisplay').classList.remove('running', 'finished');
+  document.getElementById('timerWrap').classList.remove('sticky');
   _renderTimer();
 }
 
 function timerAdd(secs) {
   _timerSeconds = Math.max(0, _timerSeconds) + secs;
-  // rimuovi stato finished se si aggiunge tempo
   document.getElementById('timerDisplay').classList.remove('finished');
   _renderTimer();
 }
@@ -1787,6 +1822,8 @@ function _updateLogLocal() {
     phase:     getPhaseForWeek(w).name,
     date:      existing.date || new Date().toISOString(),
     fatigue:   existing.fatigue || 0,
+    startTime: document.getElementById('sessionStart')?.value || existing.startTime || '',
+    endTime:   document.getElementById('sessionEnd')?.value   || existing.endTime   || '',
     notes:     document.getElementById('sessionNotes')?.value || '',
     exercises: exercisesLog,
     completed: existing.completed || false,
@@ -1819,6 +1856,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (state.logs[key]) state.logs[key].notes = notesEl.value;
     persistLocal();
     debouncedSync();
+  });
+
+  ['sessionStart', 'sessionEnd'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => {
+      if (currentView !== 'workout') return;
+      _updateLogLocal();
+      debouncedSync();
+    });
   });
 });
 
