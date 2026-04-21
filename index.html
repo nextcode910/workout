@@ -842,9 +842,6 @@
       <div class="sync-dot" id="syncDot"></div>
       <span id="syncText">offline</span>
     </div>
-    <button class="btn-icon" onclick="exportJSON()" title="Esporta JSON">
-      <span class="material-icons">download</span>
-    </button>
   </div>
 </div>
 
@@ -1601,7 +1598,7 @@ function timerPlayPause() {
         document.getElementById('timerPlayIcon').textContent = 'play_arrow';
         document.getElementById('timerDisplay').classList.remove('running');
         document.getElementById('timerDisplay').classList.add('finished');
-        document.getElementById('timerWrap').classList.remove('sticky');
+        // rimane sticky con contorno rosso — sparisce solo al reset manuale
         if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
       }
     }, 1000);
