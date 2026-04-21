@@ -890,7 +890,7 @@
 
 <!-- APP LOADER -->
 <div class="app-loader" id="appLoader">
-  <div class="loader-logo" id="loaderName">LIFT</div>
+  <div class="loader-logo">FITNESS TRACKER</div>
   <div class="loader-spinner"></div>
   <div class="loader-msg" id="loaderMsg">Caricamento in corso…</div>
   <div class="loader-offline" id="loaderOffline">
@@ -2282,19 +2282,10 @@ async function init() {
   loadState();
   readHashConfig();
 
-  // aggiorna nome nel loader se disponibile
-  const loaderName = document.getElementById('loaderName');
-  if (loaderName && state.settings) loaderName.textContent = 'LIFT';
-
   // 2. carica program.json
   showLoader('Caricamento programma…');
   const ok = await loadProgram();
   if (!ok) { hideLoader(); return; }
-
-  // aggiorna nome loader dal programma
-  if (loaderName && PROGRAM?.meta?.userName) {
-    loaderName.textContent = PROGRAM.meta.userName.toUpperCase();
-  }
 
   // 3. se non c'è token → lavora offline con localStorage
   if (!state.settings.githubToken) {
