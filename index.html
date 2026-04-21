@@ -983,6 +983,13 @@
     </div>
 
     <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border)">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-weight:600;margin-bottom:10px">GitHub API</div>
+      <div class="progress-card" id="apiCounterSection" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px">
+        caricamento…
+      </div>
+    </div>
+
+    <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border)">
       <div class="settings-field" style="margin-bottom:0">
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-weight:600;margin-bottom:8px">Istruzioni GitHub Pages</div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;font-size:12px;color:var(--text2);line-height:1.8">
@@ -1159,6 +1166,10 @@ function countCompleted() {
 
 // ═══════════════════════════════════════════════
 // PERSISTENZA
+// localStorage e Gist sono completamente separati.
+// Il localStorage salva SEMPRE in modo sincrono.
+// La sync Gist è fire-and-forget — un suo errore
+// non tocca mai i dati locali.
 // ═══════════════════════════════════════════════
 function loadState() {
   try {
@@ -1167,9 +1178,21 @@ function loadState() {
   } catch(e) {}
 }
 
+// Salva SOLO su localStorage — sincrono, non fallisce mai
+function persistLocal() {
+  try {
+    localStorage.setItem('fitnessTracker_v4', JSON.stringify(state));
+  } catch(e) {
+    console.warn('localStorage write failed:', e);
+  }
+}
+
+// Salva localmente + tenta sync Gist in background
+// Un errore Gist non può mai interrompere persistLocal()
 function saveState() {
-  localStorage.setItem('fitnessTracker_v4', JSON.stringify(state));
-  syncToGist();
+  persistLocal();
+  // fire-and-forget: non await, non blocca nulla
+  syncToGist().catch(() => {});
 }
 
 // ═══════════════════════════════════════════════
@@ -1392,7 +1415,7 @@ function renderWorkoutView(letter) {
         <div class="ex-muscle">${ex.muscle}</div>
         ${warmupBadge}${superNote}${exNote}
       </td>
-      <td style="white-space:wrap">
+      <td style="white-space:normal">
         <strong>${sets}</strong> × <strong>${scheme.repRange}</strong>
         ${rirHtml}
         ${refKgHint}
@@ -1490,9 +1513,79 @@ function renderStats() {
       }).join('')}
     </div>`;
 }
+// ── DEBOUNCE & API COUNTER ───────────────────────
+// localStorage: salva ad ogni input (sincrono, istantaneo)
+// Gist: aggiorna 2s dopo l'ultimo input su qualsiasi campo
+// Counter: traccia richieste API nell'ora corrente
+
+let _syncDebounceTimer = null;
+
+function debouncedSync() {
+  updateSyncStatus(false, 'in scrittura…');
+  clearTimeout(_syncDebounceTimer);
+  _syncDebounceTimer = setTimeout(() => {
+    trackApiRequest();
+    syncToGist().catch(() => {});
+  }, 2000);
+}
+
+// ── API COUNTER ──────────────────────────────────
+const API_LIMIT    = 5000;
+const API_WINDOW   = 60 * 60 * 1000; // 1 ora in ms
+
+function getApiStats() {
+  try {
+    const s = localStorage.getItem('ftApiStats');
+    if (s) return JSON.parse(s);
+  } catch(e) {}
+  return { count: 0, windowStart: Date.now() };
+}
+
+function trackApiRequest() {
+  const stats = getApiStats();
+  const now   = Date.now();
+  // reset se è passata più di 1 ora dall'inizio finestra
+  if (now - stats.windowStart > API_WINDOW) {
+    stats.count       = 1;
+    stats.windowStart = now;
+  } else {
+    stats.count++;
+  }
+  localStorage.setItem('ftApiStats', JSON.stringify(stats));
+  renderApiCounter();
+}
+
+function renderApiCounter() {
+  const el = document.getElementById('apiCounterSection');
+  if (!el) return;
+  const stats     = getApiStats();
+  const now       = Date.now();
+  // reset automatico se finestra scaduta
+  const count     = (now - stats.windowStart > API_WINDOW) ? 0 : stats.count;
+  const pct       = Math.min((count / API_LIMIT) * 100, 100);
+  const remaining = Math.max(0, API_LIMIT - count);
+  const resetMins = Math.max(0, Math.ceil((API_WINDOW - (now - stats.windowStart)) / 60000));
+  const color     = pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--accent3)' : 'var(--accent2)';
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+      <span style="font-size:12px;color:var(--text2)">Richieste GitHub API</span>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:${color}">${count} <span style="font-size:11px;color:var(--text3)">/ ${API_LIMIT.toLocaleString()}</span></span>
+    </div>
+    <div style="height:6px;background:var(--surface3);border-radius:3px;overflow:hidden;margin-bottom:6px">
+      <div style="height:100%;width:${pct}%;background:${color};border-radius:3px;transition:width .3s"></div>
+    </div>
+    <div style="font-size:11px;color:var(--text3)">
+      ${remaining.toLocaleString()} rimaste · reset tra ${resetMins} min
+    </div>`;
+}
+
 function onInputChange(exId, setNum) {
   markSetDone(exId, setNum);
-  updateLog();
+  // salva locale immediatamente
+  _updateLogLocal();
+  // sync Gist con debounce 2s
+  debouncedSync();
 }
 
 function markSetDone(exId, setNum) {
@@ -1500,11 +1593,13 @@ function markSetDone(exId, setNum) {
   const reps  = document.getElementById(`reps_${exId}_${setNum}`)?.value;
   const label = document.getElementById(`setStatus_${exId}_${setNum}`);
   if (!label) return;
-  if (kg && reps) { label.classList.add('set-done');    label.textContent = '✓' + setNum; }
-  else            { label.classList.remove('set-done');  label.textContent = 'S' + setNum; }
+  if (kg && reps) { label.classList.add('set-done');   label.textContent = '✓' + setNum; }
+  else            { label.classList.remove('set-done'); label.textContent = 'S' + setNum; }
 }
 
-function updateLog() {
+// Aggiorna state.logs e salva locale — NO Gist
+function _updateLogLocal() {
+  if (!currentWorkout) return;
   const wo  = PROGRAM.workouts[currentWorkout];
   const w   = state.currentWeek;
   const key = logKey(currentWorkout, w);
@@ -1523,7 +1618,6 @@ function updateLog() {
     return { id: ex.id, name: ex.name, sets };
   });
 
-  // preserva completed se già true
   const existing = state.logs[key] || {};
   state.logs[key] = {
     ...existing,
@@ -1537,8 +1631,13 @@ function updateLog() {
     completed: existing.completed || false,
   };
 
-  saveState();
-  updateSyncStatus(true, 'salvato');
+  persistLocal();
+}
+
+// updateLog pubblico — usato da setFatigue e finishWorkout
+function updateLog() {
+  _updateLogLocal();
+  debouncedSync();
 }
 
 function setFatigue(val) {
@@ -1550,10 +1649,16 @@ function setFatigue(val) {
   if (currentView === 'workout') updateLog();
 }
 
-// Note — salva in tempo reale
+// Note — debounce 2s anche sulla textarea
 document.addEventListener('DOMContentLoaded', () => {
   const notesEl = document.getElementById('sessionNotes');
-  if (notesEl) notesEl.addEventListener('input', () => { if (currentView === 'workout') updateLog(); });
+  if (notesEl) notesEl.addEventListener('input', () => {
+    if (currentView !== 'workout') return;
+    const key = logKey(currentWorkout, state.currentWeek);
+    if (state.logs[key]) state.logs[key].notes = notesEl.value;
+    persistLocal();
+    debouncedSync();
+  });
 });
 
 // ── FINE ALLENAMENTO ────────────────────────────
@@ -1627,6 +1732,7 @@ function loadSettingsUI() {
   }
   const linkEl = document.getElementById('shareLink');
   if (linkEl) linkEl.value = buildShareLink();
+  renderApiCounter();
 }
 
 function saveSettings() {
@@ -1676,7 +1782,6 @@ async function syncToGist(test = false) {
     let gistId = state.settings.gistId;
 
     if (!gistId) {
-      // Crea nuovo Gist con entrambi i file
       const files = { 'fitness-data.json': { content: dataPayload } };
       if (programPayload) files['program.json'] = { content: programPayload };
 
@@ -1685,16 +1790,15 @@ async function syncToGist(test = false) {
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
         body: JSON.stringify({ description: 'Fitness Tracker', public: false, files })
       });
-      if (!res.ok) throw new Error(`GitHub ${res.status}`);
+      if (!res.ok) { updateSyncStatus(false, 'errore ' + res.status); if (test) showToast('Errore GitHub ' + res.status, 'error'); return; }
       const data = await res.json();
       gistId = data.id;
       state.settings.gistId = gistId;
       const el = document.getElementById('gistId');
       if (el) el.value = gistId;
-      localStorage.setItem('fitnessTracker_v4', JSON.stringify(state));
+      persistLocal(); // salva il nuovo gistId localmente
       if (test) showToast('Gist creato! ID: ' + gistId.slice(0,8) + '…', 'success');
     } else {
-      // Aggiorna Gist — sempre fitness-data, program solo se presente
       const files = { 'fitness-data.json': { content: dataPayload } };
       if (programPayload) files['program.json'] = { content: programPayload };
 
@@ -1703,13 +1807,14 @@ async function syncToGist(test = false) {
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
         body: JSON.stringify({ files })
       });
-      if (!res.ok) throw new Error(`GitHub ${res.status}`);
+      if (!res.ok) { updateSyncStatus(false, 'errore ' + res.status); if (test) showToast('Errore GitHub ' + res.status, 'error'); return; }
       if (test) showToast('Connessione GitHub Gist OK ✓', 'success');
     }
     updateSyncStatus(true, 'sincronizzato');
   } catch(e) {
-    updateSyncStatus(false, 'errore sync');
-    if (test) showToast('Errore: ' + e.message, 'error');
+    // errore di rete (offline, firewall ecc.) — dati locali al sicuro
+    updateSyncStatus(false, 'offline');
+    if (test) showToast('Rete non disponibile — dati salvati localmente', 'error');
   }
 }
 
