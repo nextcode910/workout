@@ -1323,8 +1323,20 @@ function countCompleted() {
 // gistReady: blocca la sync finché loadFromGist non ha completato
 // ═══════════════════════════════════════════════
 let _gistReady = false; // diventa true dopo il primo loadFromGist
+const LS_VERSION = 'v4';
+
 function loadState() {
   try {
+    // controlla versione — se diversa pulisce il localStorage
+    const storedVersion = localStorage.getItem('fitnessTrackerVersion');
+    if (storedVersion !== LS_VERSION) {
+      // rimuove tutte le chiavi vecchie
+      ['fitnessTracker_v1','fitnessTracker_v2','fitnessTracker_v3',
+       'fitnessTracker_v4','fitnessTracker_draft'].forEach(k => localStorage.removeItem(k));
+      localStorage.setItem('fitnessTrackerVersion', LS_VERSION);
+      // state rimane quello di default — verrà popolato da loadFromGist
+      return;
+    }
     const s = localStorage.getItem('fitnessTracker_v4');
     if (s) state = { ...state, ...JSON.parse(s) };
   } catch(e) {}
@@ -1333,8 +1345,9 @@ function loadState() {
 // Salva SOLO su localStorage — sincrono, non fallisce mai
 function persistLocal() {
   try {
-    state.updatedAt = Date.now(); // timestamp ultimo salvataggio locale
+    state.updatedAt = Date.now();
     localStorage.setItem('fitnessTracker_v4', JSON.stringify(state));
+    localStorage.setItem('fitnessTrackerVersion', LS_VERSION);
   } catch(e) {
     console.warn('localStorage write failed:', e);
   }
