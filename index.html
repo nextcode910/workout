@@ -1320,7 +1320,9 @@ function countCompleted() {
 // Il localStorage salva SEMPRE in modo sincrono.
 // La sync Gist è fire-and-forget — un suo errore
 // non tocca mai i dati locali.
+// gistReady: blocca la sync finché loadFromGist non ha completato
 // ═══════════════════════════════════════════════
+let _gistReady = false; // diventa true dopo il primo loadFromGist
 function loadState() {
   try {
     const s = localStorage.getItem('fitnessTracker_v4');
@@ -2059,6 +2061,13 @@ async function syncToGist(test = false) {
   const token = state.settings.githubToken;
   if (!token) { updateSyncStatus(false, 'offline'); return; }
 
+  // blocca sync finché non abbiamo letto il Gist almeno una volta
+  // evita di sovrascrivere dati remoti con localStorage vuoto al primo avvio
+  if (!_gistReady && !test) {
+    updateSyncStatus(false, 'in attesa…');
+    return;
+  }
+
   const dataPayload    = JSON.stringify({
     ...state,
     settings: { githubToken: '', gistId: state.settings.gistId }
@@ -2150,6 +2159,10 @@ async function loadFromGist() {
     renderDashboard();
   } catch(e) {
     updateSyncStatus(false, 'errore caricamento');
+  } finally {
+    // anche se il Gist fallisce, sblocca la sync
+    // (il locale è la fonte di verità in caso di errore rete)
+    _gistReady = true;
   }
 }
 
@@ -2226,8 +2239,12 @@ async function init() {
   readHashConfig();
   const ok = await loadProgram();
   if (!ok) return;
+
+  // se non c'è token non serve aspettare il Gist
+  if (!state.settings.githubToken) _gistReady = true;
+
   renderDashboard();
-  if (state.settings.githubToken) loadFromGist();
+  if (state.settings.githubToken) await loadFromGist();
 }
 
 init();
