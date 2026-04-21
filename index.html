@@ -676,7 +676,56 @@
   }
   .btn-secondary:hover { border-color: var(--text2); color: var(--text); }
 
-  /* ── SETTINGS / JSONBIN ── */
+  /* ── LOADER ── */
+  .app-loader {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    transition: opacity .4s;
+  }
+  .app-loader.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .app-loader .loader-logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 48px;
+    letter-spacing: 4px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .app-loader .loader-msg {
+    font-size: 13px;
+    color: var(--text3);
+  }
+  .loader-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader-offline {
+    background: #ff6b3c22;
+    border: 1px solid var(--accent3);
+    border-radius: var(--radius-sm);
+    padding: 10px 16px;
+    font-size: 12px;
+    color: var(--accent3);
+    text-align: center;
+    max-width: 260px;
+    display: none;
+  }
   .settings-section {
     padding: 20px 16px;
   }
@@ -838,6 +887,16 @@
 </style>
 </head>
 <body>
+
+<!-- APP LOADER -->
+<div class="app-loader" id="appLoader">
+  <div class="loader-logo" id="loaderName">LIFT</div>
+  <div class="loader-spinner"></div>
+  <div class="loader-msg" id="loaderMsg">Caricamento in corso…</div>
+  <div class="loader-offline" id="loaderOffline">
+    Nessuna connessione — carico dati locali
+  </div>
+</div>
 
 <!-- HEADER -->
 <div class="header" id="mainHeader">
@@ -2128,56 +2187,6 @@ async function syncToGist(test = false) {
   }
 }
 
-async function loadFromGist() {
-  const token  = state.settings.githubToken;
-  const gistId = state.settings.gistId;
-  if (!token || !gistId) return;
-  try {
-    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
-      headers: { 'Authorization': `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' }
-    });
-    if (!res.ok) throw new Error('Load failed');
-    const data = await res.json();
-
-    // carica fitness-data.json
-    // Merge basato su timestamp — vince chi è più recente
-    // Questo evita che il Gist (potenzialmente più vecchio del debounce)
-    // sovrascriva dati locali più recenti
-    const dataContent = data.files['fitness-data.json']?.content;
-    if (dataContent) {
-      const remote      = JSON.parse(dataContent);
-      const remoteTs    = remote.updatedAt    || 0;
-      const localTs     = state.updatedAt     || 0;
-
-      if (remoteTs > localTs) {
-        // il Gist è più recente del locale — usa quello
-        state.logs        = remote.logs        || {};
-        state.currentWeek = remote.currentWeek || state.currentWeek;
-        state.nextWorkout = remote.nextWorkout  || state.nextWorkout;
-        state.updatedAt   = remoteTs;
-        localStorage.setItem('fitnessTracker_v4', JSON.stringify(state));
-      }
-      // se locale è più recente o uguale — non toccare nulla
-    }
-
-    // carica program.json dal Gist se presente (sovrascrive cache locale)
-    const programContent = data.files['program.json']?.content;
-    if (programContent) {
-      const remoteProgram = JSON.parse(programContent);
-      PROGRAM = remoteProgram;
-      localStorage.setItem('fitnessProgram_v1', JSON.stringify(remoteProgram));
-    }
-
-    updateSyncStatus(true, 'sincronizzato');
-    renderDashboard();
-  } catch(e) {
-    updateSyncStatus(false, 'errore caricamento');
-  } finally {
-    // anche se il Gist fallisce, sblocca la sync
-    // (il locale è la fonte di verità in caso di errore rete)
-    _gistReady = true;
-  }
-}
 
 function updateSyncStatus(ok, text) {
   const dot  = document.getElementById('syncDot');
@@ -2244,20 +2253,123 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('it-IT', { weekday:'short', day:'numeric', month:'short' });
 }
 
+// ── LOADER ──────────────────────────────────────
+function showLoader(msg) {
+  const el = document.getElementById('loaderMsg');
+  if (el) el.textContent = msg || 'Caricamento in corso…';
+  document.getElementById('appLoader')?.classList.remove('hidden');
+}
+
+function hideLoader() {
+  const loader = document.getElementById('appLoader');
+  if (!loader) return;
+  loader.classList.add('hidden');
+  setTimeout(() => loader.style.display = 'none', 400);
+}
+
+function showOfflineWarning() {
+  const el = document.getElementById('loaderOffline');
+  if (el) el.style.display = 'block';
+}
+
 // ═══════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════
 async function init() {
+  showLoader('Caricamento programma…');
+
+  // 1. leggi localStorage silenziosamente (solo per confronto updatedAt)
   loadState();
   readHashConfig();
+
+  // aggiorna nome nel loader se disponibile
+  const loaderName = document.getElementById('loaderName');
+  if (loaderName && state.settings) loaderName.textContent = 'LIFT';
+
+  // 2. carica program.json
+  showLoader('Caricamento programma…');
   const ok = await loadProgram();
-  if (!ok) return;
+  if (!ok) { hideLoader(); return; }
 
-  // se non c'è token non serve aspettare il Gist
-  if (!state.settings.githubToken) _gistReady = true;
+  // aggiorna nome loader dal programma
+  if (loaderName && PROGRAM?.meta?.userName) {
+    loaderName.textContent = PROGRAM.meta.userName.toUpperCase();
+  }
 
+  // 3. se non c'è token → lavora offline con localStorage
+  if (!state.settings.githubToken) {
+    _gistReady = true;
+    hideLoader();
+    renderDashboard();
+    return;
+  }
+
+  // 4. carica dal Gist — fonte primaria
+  showLoader('Sincronizzazione dati…');
+  await loadFromGist();
+
+  // 5. mostra dashboard con dati corretti
+  hideLoader();
   renderDashboard();
-  if (state.settings.githubToken) await loadFromGist();
+}
+
+async function loadFromGist() {
+  const token  = state.settings.githubToken;
+  const gistId = state.settings.gistId;
+  if (!token || !gistId) {
+    _gistReady = true;
+    return;
+  }
+
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' }
+    });
+
+    if (!res.ok) throw new Error('Gist fetch failed: ' + res.status);
+    const data = await res.json();
+
+    // ── fitness-data.json ──
+    const dataContent = data.files['fitness-data.json']?.content;
+    if (dataContent) {
+      const remote   = JSON.parse(dataContent);
+      const remoteTs = remote.updatedAt || 0;
+      const localTs  = state.updatedAt  || 0;
+
+      if (remoteTs >= localTs) {
+        // Gist è uguale o più recente → usa Gist
+        state.logs        = remote.logs        || {};
+        state.currentWeek = remote.currentWeek || state.currentWeek;
+        state.nextWorkout = remote.nextWorkout  || state.nextWorkout;
+        state.updatedAt   = remoteTs;
+        localStorage.setItem('fitnessTracker_v4', JSON.stringify(state));
+        localStorage.setItem('fitnessTrackerVersion', LS_VERSION);
+      } else {
+        // locale è più recente (modifiche offline) → aggiorna Gist
+        await syncToGist();
+      }
+    }
+
+    // ── program.json ──
+    const programContent = data.files['program.json']?.content;
+    if (programContent) {
+      const remoteProgram = JSON.parse(programContent);
+      PROGRAM = remoteProgram;
+      localStorage.setItem('fitnessProgram_v1', JSON.stringify(remoteProgram));
+    }
+
+    updateSyncStatus(true, 'sincronizzato');
+
+  } catch(e) {
+    // offline o errore rete → usa localStorage se disponibile
+    updateSyncStatus(false, 'offline');
+    if (!state.logs || Object.keys(state.logs).length === 0) {
+      showOfflineWarning();
+      await new Promise(r => setTimeout(r, 1500)); // mostra avviso 1.5s
+    }
+  } finally {
+    _gistReady = true;
+  }
 }
 
 init();
