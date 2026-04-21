@@ -824,8 +824,16 @@
     background: var(--text3);
     flex-shrink: 0;
   }
-  .sync-dot.ok { background: var(--green); }
-  .sync-dot.error { background: var(--red); }
+  .sync-dot.ok      { background: var(--green); }
+  .sync-dot.error   { background: var(--red); }
+  .sync-dot.syncing {
+    background: var(--accent);
+    animation: syncPulse .8s ease-in-out infinite;
+  }
+  @keyframes syncPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: .4; transform: scale(.7); }
+  }
 
 </style>
 </head>
@@ -1323,6 +1331,7 @@ function loadState() {
 // Salva SOLO su localStorage — sincrono, non fallisce mai
 function persistLocal() {
   try {
+    state.updatedAt = Date.now(); // timestamp ultimo salvataggio locale
     localStorage.setItem('fitnessTracker_v4', JSON.stringify(state));
   } catch(e) {
     console.warn('localStorage write failed:', e);
@@ -2109,17 +2118,24 @@ async function loadFromGist() {
     const data = await res.json();
 
     // carica fitness-data.json
+    // Merge basato su timestamp — vince chi è più recente
+    // Questo evita che il Gist (potenzialmente più vecchio del debounce)
+    // sovrascriva dati locali più recenti
     const dataContent = data.files['fitness-data.json']?.content;
     if (dataContent) {
-      const remote = JSON.parse(dataContent);
-      const remoteCount = Object.values(remote.logs || {}).filter(l => l.completed).length;
-      const localCount  = countCompleted();
-      if (remoteCount >= localCount) {
+      const remote      = JSON.parse(dataContent);
+      const remoteTs    = remote.updatedAt    || 0;
+      const localTs     = state.updatedAt     || 0;
+
+      if (remoteTs > localTs) {
+        // il Gist è più recente del locale — usa quello
         state.logs        = remote.logs        || {};
         state.currentWeek = remote.currentWeek || state.currentWeek;
         state.nextWorkout = remote.nextWorkout  || state.nextWorkout;
+        state.updatedAt   = remoteTs;
         localStorage.setItem('fitnessTracker_v4', JSON.stringify(state));
       }
+      // se locale è più recente o uguale — non toccare nulla
     }
 
     // carica program.json dal Gist se presente (sovrascrive cache locale)
@@ -2138,8 +2154,16 @@ async function loadFromGist() {
 }
 
 function updateSyncStatus(ok, text) {
-  document.getElementById('syncDot').className = 'sync-dot ' + (ok ? 'ok' : 'error');
-  document.getElementById('syncText').textContent = text;
+  const dot  = document.getElementById('syncDot');
+  const span = document.getElementById('syncText');
+  if (!dot || !span) return;
+  if (text === 'in scrittura…') {
+    dot.className  = 'sync-dot syncing';
+    span.textContent = text;
+  } else {
+    dot.className  = 'sync-dot ' + (ok ? 'ok' : 'error');
+    span.textContent = text;
+  }
 }
 
 // ═══════════════════════════════════════════════
