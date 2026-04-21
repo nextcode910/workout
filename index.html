@@ -356,7 +356,82 @@
   }
   .ex-name { font-weight: 500; }
   .ex-muscle { font-size: 11px; color: var(--text3); margin-top: 2px; }
-  /* Warmup popup */
+  /* ── TIMER ── */
+  .timer-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 16px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .timer-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    border: 4px solid var(--border);
+    transition: border-color .3s, box-shadow .3s;
+  }
+  .timer-display.running {
+    border-color: var(--accent2);
+    box-shadow: 0 0 0 4px #3cffb422;
+  }
+  .timer-display.finished {
+    border-color: var(--red);
+    box-shadow: 0 0 0 4px #ff444422;
+    animation: timerPulse 1s ease-in-out infinite;
+  }
+  @keyframes timerPulse {
+    0%, 100% { box-shadow: 0 0 0 4px #ff444422; }
+    50%       { box-shadow: 0 0 0 10px #ff444411; }
+  }
+  #timerTime {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 56px;
+    letter-spacing: 2px;
+    color: var(--text);
+    line-height: 1;
+  }
+  .timer-controls {
+    display: flex;
+    gap: 12px;
+  }
+  .timer-btn-main {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .2s, border-color .2s;
+  }
+  .timer-btn-main:hover { background: var(--surface3); border-color: var(--accent); }
+  .timer-btn-main .material-icons { font-size: 26px; }
+  .timer-presets {
+    display: flex;
+    gap: 8px;
+  }
+  .timer-preset {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--text2);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .timer-preset:hover { border-color: var(--accent2); color: var(--accent2); background: var(--surface3); }
   .ex-warmup {
     display: inline-flex;
     align-items: center;
@@ -859,6 +934,27 @@
   </div>
 
   <div class="week-selector" id="weekSelector"></div>
+
+  <!-- TIMER -->
+  <div class="timer-wrap" id="timerWrap">
+    <div class="timer-display" id="timerDisplay">
+      <span id="timerTime">0:00</span>
+    </div>
+    <div class="timer-controls">
+      <button class="timer-btn-main" id="timerPlayBtn" onclick="timerPlayPause()">
+        <span class="material-icons" id="timerPlayIcon">play_arrow</span>
+      </button>
+      <button class="timer-btn-main" onclick="timerReset()">
+        <span class="material-icons">replay</span>
+      </button>
+    </div>
+    <div class="timer-presets">
+      <button class="timer-preset" onclick="timerAdd(30)">+30s</button>
+      <button class="timer-preset" onclick="timerAdd(60)">+60s</button>
+      <button class="timer-preset" onclick="timerAdd(90)">+90s</button>
+      <button class="timer-preset" onclick="timerAdd(120)">+120s</button>
+    </div>
+  </div>
 
   <div class="exercise-table-wrap">
     <table class="exercise-table">
@@ -1433,7 +1529,61 @@ function changeWeek(w) {
   renderWorkoutView(currentWorkout);
 }
 
-// ── WARMUP POPUP ────────────────────────────────
+// ── TIMER ────────────────────────────────────────
+let _timerSeconds  = 0;
+let _timerInterval = null;
+let _timerRunning  = false;
+
+function timerPlayPause() {
+  if (_timerSeconds <= 0 && !_timerRunning) return; // niente da avviare
+  if (_timerRunning) {
+    clearInterval(_timerInterval);
+    _timerRunning = false;
+    document.getElementById('timerPlayIcon').textContent = 'play_arrow';
+    document.getElementById('timerDisplay').classList.remove('running');
+  } else {
+    _timerRunning = true;
+    document.getElementById('timerPlayIcon').textContent = 'pause';
+    document.getElementById('timerDisplay').classList.add('running');
+    document.getElementById('timerDisplay').classList.remove('finished');
+    _timerInterval = setInterval(() => {
+      _timerSeconds--;
+      _renderTimer();
+      if (_timerSeconds <= 0) {
+        clearInterval(_timerInterval);
+        _timerRunning = false;
+        document.getElementById('timerPlayIcon').textContent = 'play_arrow';
+        document.getElementById('timerDisplay').classList.remove('running');
+        document.getElementById('timerDisplay').classList.add('finished');
+        // vibrazione se supportata
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      }
+    }, 1000);
+  }
+}
+
+function timerReset() {
+  clearInterval(_timerInterval);
+  _timerRunning  = false;
+  _timerSeconds  = 0;
+  document.getElementById('timerPlayIcon').textContent = 'play_arrow';
+  document.getElementById('timerDisplay').classList.remove('running', 'finished');
+  _renderTimer();
+}
+
+function timerAdd(secs) {
+  _timerSeconds = Math.max(0, _timerSeconds) + secs;
+  // rimuovi stato finished se si aggiunge tempo
+  document.getElementById('timerDisplay').classList.remove('finished');
+  _renderTimer();
+}
+
+function _renderTimer() {
+  const m = Math.floor(Math.abs(_timerSeconds) / 60);
+  const s = Math.abs(_timerSeconds) % 60;
+  document.getElementById('timerTime').textContent =
+    `${m}:${String(s).padStart(2, '0')}`;
+}
 function showWarmup(exId) {
   const wo = PROGRAM.workouts[currentWorkout];
   const ex = wo.exercises.find(e => e.id === exId);
@@ -1526,7 +1676,7 @@ function debouncedSync() {
   _syncDebounceTimer = setTimeout(() => {
     trackApiRequest();
     syncToGist().catch(() => {});
-  }, 2000);
+  }, 5000);
 }
 
 // ── API COUNTER ──────────────────────────────────
