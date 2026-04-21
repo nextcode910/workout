@@ -1384,7 +1384,7 @@ function countCompleted() {
 // gistReady: blocca la sync finché loadFromGist non ha completato
 // ═══════════════════════════════════════════════
 let _gistReady = false; // diventa true dopo il primo loadFromGist
-const LS_VERSION = 'v4';
+const LS_VERSION = 'v5';
 
 function loadState() {
   try {
@@ -1393,12 +1393,12 @@ function loadState() {
     if (storedVersion !== LS_VERSION) {
       // rimuove tutte le chiavi vecchie
       ['fitnessTracker_v1','fitnessTracker_v2','fitnessTracker_v3',
-       'fitnessTracker_v4','fitnessTracker_draft'].forEach(k => localStorage.removeItem(k));
+       'fitnessTracker_v4','fitnessTracker_v5','fitnessTracker_draft'].forEach(k => localStorage.removeItem(k));
       localStorage.setItem('fitnessTrackerVersion', LS_VERSION);
       // state rimane quello di default — verrà popolato da loadFromGist
       return;
     }
-    const s = localStorage.getItem('fitnessTracker_v4');
+    const s = localStorage.getItem('fitnessTracker_v5');
     if (s) state = { ...state, ...JSON.parse(s) };
   } catch(e) {}
 }
@@ -1406,8 +1406,8 @@ function loadState() {
 // Salva SOLO su localStorage — sincrono, non fallisce mai
 function persistLocal() {
   try {
-    state.updatedAt = Date.now();
-    localStorage.setItem('fitnessTracker_v4', JSON.stringify(state));
+    // NON tocca updatedAt — lo aggiorna solo _updateLogLocal
+    localStorage.setItem('fitnessTracker_v5', JSON.stringify(state));
     localStorage.setItem('fitnessTrackerVersion', LS_VERSION);
   } catch(e) {
     console.warn('localStorage write failed:', e);
@@ -1986,6 +1986,8 @@ function _updateLogLocal() {
     completed: existing.completed || false,
   };
 
+  // aggiorna updatedAt SOLO qui — quando l'utente inserisce dati reali
+  state.updatedAt = Date.now();
   persistLocal();
 }
 
@@ -2335,7 +2337,7 @@ async function loadFromGist() {
         state.currentWeek = remote.currentWeek || state.currentWeek;
         state.nextWorkout = remote.nextWorkout  || state.nextWorkout;
         state.updatedAt   = remoteTs;
-        localStorage.setItem('fitnessTracker_v4', JSON.stringify(state));
+        localStorage.setItem('fitnessTracker_v5', JSON.stringify(state));
         localStorage.setItem('fitnessTrackerVersion', LS_VERSION);
       } else {
         // locale è più recente (modifiche offline) → aggiorna Gist
