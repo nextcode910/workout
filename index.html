@@ -926,6 +926,22 @@
         </div>
       </div>
     </div>
+
+    <div class="progress-card" style="margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="pc-title" style="margin-bottom:0">Durata sessioni (min)</div>
+        <div style="text-align:right">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent2);line-height:1" id="statTotalTime">0</div>
+          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">min totali</div>
+        </div>
+      </div>
+      <div id="durationChart">
+        <div class="prog-empty">
+          <span class="material-icons">timer</span>
+          Inserisci orario inizio/fine per vedere i dati
+        </div>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -1664,6 +1680,7 @@ function renderStats() {
   const byWeek  = {};
   let totalKg   = 0;
 
+  // ── tonnellaggio per settimana ──
   Object.values(state.logs).forEach(log => {
     if (!log.exercises) return;
     const wk = log.week || 1;
@@ -1679,31 +1696,89 @@ function renderStats() {
     });
   });
 
-  // totale kg
-  const totalEl = document.getElementById('statTotalKg');
-  if (totalEl) totalEl.textContent = totalKg >= 1000
+  const totalKgEl = document.getElementById('statTotalKg');
+  if (totalKgEl) totalKgEl.textContent = totalKg >= 1000
     ? (totalKg / 1000).toFixed(1) + 't'
     : Math.round(totalKg).toLocaleString('it-IT');
 
-  // grafico
   const chartEl = document.getElementById('progressChart');
-  if (!chartEl) return;
-  const weeks = Object.keys(byWeek).sort((a,b) => a-b);
-  if (weeks.length < 1) return;
-  const maxVal = Math.max(...Object.values(byWeek));
-  chartEl.innerHTML = `
+  if (chartEl) {
+    const weeks = Object.keys(byWeek).sort((a,b) => a-b);
+    if (weeks.length >= 1) {
+      const maxVal = Math.max(...Object.values(byWeek));
+      chartEl.innerHTML = `
+        <div style="display:flex;gap:4px;align-items:flex-end;height:80px;padding-top:8px">
+          ${weeks.map(w => {
+            const h    = Math.max(Math.round((byWeek[w]/maxVal)*72), 3);
+            const kVal = byWeek[w] >= 1000
+              ? (byWeek[w]/1000).toFixed(1)+'t'
+              : Math.round(byWeek[w])+'kg';
+            return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
+              <div style="font-size:8px;color:var(--text3)">${kVal}</div>
+              <div style="height:${h}px;background:var(--accent);border-radius:4px 4px 0 0;width:100%;opacity:.85"></div>
+              <div style="font-size:9px;color:var(--text3)">W${w}</div>
+            </div>`;
+          }).join('')}
+        </div>`;
+    }
+  }
+
+  // ── durata sessioni ──
+  const workoutColors = {
+    A: 'var(--accent)',
+    B: 'var(--accent2)',
+    C: 'var(--accent3)'
+  };
+
+  // prendi tutti i log completati con orario inizio e fine, ordina per data
+  const sessions = Object.values(state.logs)
+    .filter(l => l.completed && l.startTime && l.endTime)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  let totalMins = 0;
+  const durations = sessions.map(l => {
+    const [sh, sm] = l.startTime.split(':').map(Number);
+    const [eh, em] = l.endTime.split(':').map(Number);
+    let mins = (eh * 60 + em) - (sh * 60 + sm);
+    if (mins < 0) mins += 24 * 60; // gestisce mezzanotte
+    totalMins += mins;
+    return { mins, workout: l.workout, week: l.week, date: l.date };
+  });
+
+  const totalTimeEl = document.getElementById('statTotalTime');
+  if (totalTimeEl) {
+    totalTimeEl.textContent = totalMins >= 60
+      ? `${Math.floor(totalMins/60)}h ${totalMins%60}m`
+      : totalMins + 'min';
+  }
+
+  const durEl = document.getElementById('durationChart');
+  if (!durEl) return;
+
+  if (durations.length === 0) return;
+
+  const maxMins = Math.max(...durations.map(d => d.mins));
+  const shown   = durations.slice(-20); // ultime 20 sessioni
+
+  durEl.innerHTML = `
     <div style="display:flex;gap:4px;align-items:flex-end;height:80px;padding-top:8px">
-      ${weeks.map(w => {
-        const h    = Math.max(Math.round((byWeek[w]/maxVal)*72), 3);
-        const kVal = byWeek[w] >= 1000
-          ? (byWeek[w]/1000).toFixed(1)+'t'
-          : Math.round(byWeek[w])+'kg';
-        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
-          <div style="font-size:8px;color:var(--text3)">${kVal}</div>
-          <div style="height:${h}px;background:var(--accent);border-radius:4px 4px 0 0;width:100%;opacity:.85"></div>
-          <div style="font-size:9px;color:var(--text3)">W${w}</div>
+      ${shown.map(d => {
+        const h     = Math.max(Math.round((d.mins / maxMins) * 72), 3);
+        const color = workoutColors[d.workout] || 'var(--accent)';
+        const label = d.workout + ' W' + d.week;
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0">
+          <div style="font-size:8px;color:var(--text3);white-space:nowrap">${d.mins}m</div>
+          <div style="height:${h}px;background:${color};border-radius:4px 4px 0 0;width:100%;opacity:.9"></div>
+          <div style="font-size:8px;color:var(--text3);white-space:nowrap;overflow:hidden;max-width:100%;text-overflow:ellipsis">${label}</div>
         </div>`;
       }).join('')}
+    </div>
+    <div style="display:flex;gap:12px;margin-top:10px;justify-content:center">
+      ${Object.entries(workoutColors).map(([k,v]) =>
+        `<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text3)">
+          <div style="width:10px;height:10px;border-radius:2px;background:${v}"></div>${k}
+        </div>`
+      ).join('')}
     </div>`;
 }
 // ── DEBOUNCE & API COUNTER ───────────────────────
