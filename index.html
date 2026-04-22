@@ -1267,6 +1267,7 @@ async function loadProgram() {
   const token  = state.settings.githubToken;
   const gistId = state.settings.gistId;
   if (token && gistId) {
+    showLoader('Caricamento programma da Gist…');
     try {
       const res = await fetch(`https://api.github.com/gists/${gistId}`, {
         headers: { 'Authorization': `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' }
@@ -2437,6 +2438,7 @@ async function loadFromGist() {
     updateSyncStatus(true, 'sincronizzato');
 
   } catch(e) {
+    hideLoader();
     updateSyncStatus(false, 'offline');
     if (!state.logs || Object.keys(state.logs).length === 0) {
       showOfflineWarning();
