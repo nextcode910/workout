@@ -1358,12 +1358,20 @@ function estimateDuration(letter, w) {
 let state = {
   currentWeek: 1,
   nextWorkout: 'A',
-  logs: {},   // { "A_W1": { exercises, fatigue, notes, date, completed } }
+  logs: {},
   settings: { githubToken: "", gistId: "" }
 };
 
 let currentWorkout = null;
 let currentView    = 'dashboard';
+let _localStateCache = null;
+const _WORKOUT_COLORS = {
+  A: 'var(--accent)',
+  B: 'var(--accent2)',
+  C: 'var(--accent3)'
+};
+let _apiStatsCache = null;
+let _apiStatsExpiry = 0;
 
 // chiave log: allenamento + settimana (unica, si sovrascrive)
 function logKey(letter, week) {
@@ -1383,31 +1391,30 @@ function countCompleted() {
 // non tocca mai i dati locali.
 // gistReady: blocca la sync finché loadFromGist non ha completato
 // ═══════════════════════════════════════════════
-let _gistReady = false; // diventa true dopo il primo loadFromGist
+let _gistReady = false; // true dopo prima sync OK (o subito se no token/gist)
 const LS_VERSION = 'v5';
 
 function loadState() {
   try {
-    // controlla versione — se diversa pulisce il localStorage
     const storedVersion = localStorage.getItem('fitnessTrackerVersion');
     if (storedVersion !== LS_VERSION) {
-      // rimuove tutte le chiavi vecchie
       ['fitnessTracker_v1','fitnessTracker_v2','fitnessTracker_v3',
        'fitnessTracker_v4','fitnessTracker_v5','fitnessTracker_draft'].forEach(k => localStorage.removeItem(k));
       localStorage.setItem('fitnessTrackerVersion', LS_VERSION);
-      // state rimane quello di default — verrà popolato da loadFromGist
       return;
     }
     const s = localStorage.getItem('fitnessTracker_v5');
-    if (s) state = { ...state, ...JSON.parse(s) };
+    if (s) {
+      try { state = { ...state, ...JSON.parse(s) }; } catch(_) {}
+    }
   } catch(e) {}
 }
 
 // Salva SOLO su localStorage — sincrono, non fallisce mai
 function persistLocal() {
+  _localStateCache = JSON.stringify(state);
   try {
-    // NON tocca updatedAt — lo aggiorna solo _updateLogLocal
-    localStorage.setItem('fitnessTracker_v5', JSON.stringify(state));
+    localStorage.setItem('fitnessTracker_v5', _localStateCache);
     localStorage.setItem('fitnessTrackerVersion', LS_VERSION);
   } catch(e) {
     console.warn('localStorage write failed:', e);
@@ -1418,7 +1425,6 @@ function persistLocal() {
 // Un errore Gist non può mai interrompere persistLocal()
 function saveState() {
   persistLocal();
-  // fire-and-forget: non await, non blocca nulla
   syncToGist().catch(() => {});
 }
 
@@ -1592,6 +1598,10 @@ function renderWorkoutView(letter) {
   const tbody = document.getElementById('exerciseBody');
   tbody.innerHTML = '';
 
+  const logExIndex = logData?.exercises
+    ? new Map(logData.exercises.map(e => [e.id, e]))
+    : null;
+
   wo.exercises.forEach(ex => {
     const scheme = getExScheme(ex, w);
     const sets = scheme.sets;
@@ -1599,7 +1609,7 @@ function renderWorkoutView(letter) {
     let setsHtml = '';
     for (let s = 1; s <= sets; s++) {
       // recupera valore dal log se presente
-      const logEx  = logData?.exercises?.find(e => e.id === ex.id);
+      const logEx  = logExIndex?.get(ex.id);
       const logSet = logEx?.sets?.find(ds => ds.set === s);
       const valKg   = logSet?.kg   || '';
       const valReps = logSet?.reps || '';
@@ -1790,7 +1800,8 @@ function renderStats() {
   if (chartEl) {
     const weeks = Object.keys(byWeek).sort((a,b) => a-b);
     if (weeks.length >= 1) {
-      const maxVal = Math.max(...Object.values(byWeek));
+      const vals = Object.values(byWeek);
+      const maxVal = Math.max(0, ...vals);
       chartEl.innerHTML = `
         <div style="display:flex;gap:4px;align-items:flex-end;height:80px;padding-top:8px">
           ${weeks.map(w => {
@@ -1809,12 +1820,6 @@ function renderStats() {
   }
 
   // ── durata sessioni ──
-  const workoutColors = {
-    A: 'var(--accent)',
-    B: 'var(--accent2)',
-    C: 'var(--accent3)'
-  };
-
   // prendi tutti i log completati con orario inizio e fine, ordina per data
   const sessions = Object.values(state.logs)
     .filter(l => l.completed && l.startTime && l.endTime)
@@ -1842,14 +1847,14 @@ function renderStats() {
 
   if (durations.length === 0) return;
 
-  const maxMins = Math.max(...durations.map(d => d.mins));
+  const maxMins = Math.max(0, ...durations.map(d => d.mins));
   const shown   = durations.slice(-20); // ultime 20 sessioni
 
   durEl.innerHTML = `
     <div style="display:flex;gap:4px;align-items:flex-end;height:80px;padding-top:8px">
       ${shown.map(d => {
         const h     = Math.max(Math.round((d.mins / maxMins) * 72), 3);
-        const color = workoutColors[d.workout] || 'var(--accent)';
+        const color = _WORKOUT_COLORS[d.workout] || 'var(--accent)';
         const label = d.workout + ' W' + d.week;
         return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0">
           <div style="font-size:8px;color:var(--text3);white-space:nowrap">${d.mins}m</div>
@@ -1859,7 +1864,7 @@ function renderStats() {
       }).join('')}
     </div>
     <div style="display:flex;gap:12px;margin-top:10px;justify-content:center">
-      ${Object.entries(workoutColors).map(([k,v]) =>
+      ${Object.entries(_WORKOUT_COLORS).map(([k,v]) =>
         `<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text3)">
           <div style="width:10px;height:10px;border-radius:2px;background:${v}"></div>${k}
         </div>`
@@ -1868,8 +1873,8 @@ function renderStats() {
 }
 // ── DEBOUNCE & API COUNTER ───────────────────────
 // localStorage: salva ad ogni input (sincrono, istantaneo)
-// Gist: aggiorna 2s dopo l'ultimo input su qualsiasi campo
-// Counter: traccia richieste API nell'ora corrente
+// Gist: aggiorna 5s dopo l'ultimo input su qualsiasi campo
+// _apiStatsCache: 5s cache per evitare repeated localStorage reads
 
 let _syncDebounceTimer = null;
 
@@ -1887,17 +1892,25 @@ const API_LIMIT    = 5000;
 const API_WINDOW   = 60 * 60 * 1000; // 1 ora in ms
 
 function getApiStats() {
+  const now = Date.now();
+  if (_apiStatsCache && now < _apiStatsExpiry) return _apiStatsCache;
   try {
     const s = localStorage.getItem('ftApiStats');
-    if (s) return JSON.parse(s);
+    if (s) _apiStatsCache = JSON.parse(s);
   } catch(e) {}
-  return { count: 0, windowStart: Date.now() };
+  if (!_apiStatsCache) _apiStatsCache = { count: 0, windowStart: now };
+  if (now - _apiStatsCache.windowStart > API_WINDOW) {
+    _apiStatsCache = { count: 0, windowStart: now };
+  }
+  _apiStatsExpiry = now + 5000;
+  return _apiStatsCache;
 }
 
 function trackApiRequest() {
+  _apiStatsCache = null;
+  _apiStatsExpiry = 0;
   const stats = getApiStats();
   const now   = Date.now();
-  // reset se è passata più di 1 ora dall'inizio finestra
   if (now - stats.windowStart > API_WINDOW) {
     stats.count       = 1;
     stats.windowStart = now;
@@ -1935,9 +1948,7 @@ function renderApiCounter() {
 
 function onInputChange(exId, setNum) {
   markSetDone(exId, setNum);
-  // salva locale immediatamente
-  _updateLogLocal();
-  // sync Gist con debounce 2s
+  _updateSetInLog(exId, setNum);
   debouncedSync();
 }
 
@@ -1950,6 +1961,47 @@ function markSetDone(exId, setNum) {
   else            { label.classList.remove('set-done'); label.textContent = 'S' + setNum; }
 }
 
+// Aggiorna SOLO il set changed — O(1) vs rebuild-all O(n*sets)
+function _updateSetInLog(exId, setNum) {
+  if (!currentWorkout) return;
+  const wo = PROGRAM.workouts[currentWorkout];
+  const w  = state.currentWeek;
+  const key = logKey(currentWorkout, w);
+
+  if (!state.logs[key]) {
+    state.logs[key] = {
+      workout: currentWorkout, week: w,
+      phase: getPhaseForWeek(w).name,
+      date: new Date().toISOString(),
+      fatigue: 0,
+      startTime: '', endTime: '', notes: '',
+      exercises: [], completed: false,
+    };
+  }
+  const log = state.logs[key];
+
+  const exIdx = log.exercises.findIndex(e => e.id === exId);
+  const exDef = wo.exercises.find(e => e.id === exId);
+
+  const setData = {
+    set:  setNum,
+    kg:   document.getElementById(`kg_${exId}_${setNum}`)?.value   || null,
+    reps: document.getElementById(`reps_${exId}_${setNum}`)?.value || null,
+    rir:  document.getElementById(`rir_${exId}_${setNum}`)?.value  || null,
+  };
+
+  if (exIdx >= 0) {
+    const setIdx = log.exercises[exIdx].sets.findIndex(s => s.set === setNum);
+    if (setIdx >= 0) log.exercises[exIdx].sets[setIdx] = setData;
+    else             log.exercises[exIdx].sets.push(setData);
+  } else if (exDef) {
+    log.exercises.push({ id: exDef.id, name: exDef.name, sets: [setData] });
+  }
+
+  state.updatedAt = Date.now();
+  persistLocal();
+}
+
 // Aggiorna state.logs e salva locale — NO Gist
 function _updateLogLocal() {
   if (!currentWorkout) return;
@@ -1957,21 +2009,20 @@ function _updateLogLocal() {
   const w   = state.currentWeek;
   const key = logKey(currentWorkout, w);
 
+  const existing = state.logs[key] || {};
+
   const exercisesLog = wo.exercises.map(ex => {
     const scheme = getExScheme(ex, w);
     const sets = [];
     for (let s = 1; s <= scheme.sets; s++) {
-      sets.push({
-        set:  s,
-        kg:   document.getElementById(`kg_${ex.id}_${s}`)?.value   || null,
-        reps: document.getElementById(`reps_${ex.id}_${s}`)?.value || null,
-        rir:  document.getElementById(`rir_${ex.id}_${s}`)?.value  || null,
-      });
+      const kg   = document.getElementById(`kg_${ex.id}_${s}`)?.value   || null;
+      const reps = document.getElementById(`reps_${ex.id}_${s}`)?.value || null;
+      const rir  = document.getElementById(`rir_${ex.id}_${s}`)?.value  || null;
+      sets.push({ set: s, kg, reps, rir });
     }
     return { id: ex.id, name: ex.name, sets };
   });
 
-  const existing = state.logs[key] || {};
   state.logs[key] = {
     ...existing,
     workout:   currentWorkout,
@@ -1986,7 +2037,6 @@ function _updateLogLocal() {
     completed: existing.completed || false,
   };
 
-  // aggiorna updatedAt SOLO qui — quando l'utente inserisce dati reali
   state.updatedAt = Date.now();
   persistLocal();
 }
@@ -2132,27 +2182,25 @@ function copyShareLink() {
 // Il Gist contiene due file:
 //   fitness-data.json  — log sessioni (aggiornato ad ogni input)
 //   program.json       — scheda esercizi (aggiornato solo se PROGRAM cambia)
+// _gistReady = true PRIMA del fetch → write non bloccate
+// timestamp comparison: remoteTs > localTs → remote wins
 // ═══════════════════════════════════════════════
 async function syncToGist(test = false) {
   const token = state.settings.githubToken;
   if (!token) { updateSyncStatus(false, 'offline'); return; }
 
-  // blocca sync finché non abbiamo letto il Gist almeno una volta
-  // evita di sovrascrivere dati remoti con localStorage vuoto al primo avvio
   if (!_gistReady && !test) {
     updateSyncStatus(false, 'in attesa…');
     return;
   }
 
-  const dataPayload    = JSON.stringify({
-    ...state,
-    settings: { githubToken: '', gistId: state.settings.gistId }
-  }, null, 2);
-
-  const programPayload = PROGRAM ? JSON.stringify(PROGRAM, null, 2) : null;
-
   try {
-    let gistId = state.settings.gistId;
+    const gistId = state.settings.gistId;
+    const dataPayload = JSON.stringify({
+      ...state,
+      settings: { githubToken: '', gistId: gistId }
+    }, null, 2);
+    const programPayload = PROGRAM ? JSON.stringify(PROGRAM, null, 2) : null;
 
     if (!gistId) {
       const files = { 'fitness-data.json': { content: dataPayload } };
@@ -2165,12 +2213,11 @@ async function syncToGist(test = false) {
       });
       if (!res.ok) { updateSyncStatus(false, 'errore ' + res.status); if (test) showToast('Errore GitHub ' + res.status, 'error'); return; }
       const data = await res.json();
-      gistId = data.id;
-      state.settings.gistId = gistId;
+      state.settings.gistId = data.id;
       const el = document.getElementById('gistId');
-      if (el) el.value = gistId;
-      persistLocal(); // salva il nuovo gistId localmente
-      if (test) showToast('Gist creato! ID: ' + gistId.slice(0,8) + '…', 'success');
+      if (el) el.value = data.id;
+      persistLocal();
+      if (test) showToast('Gist creato! ID: ' + data.id.slice(0,8) + '…', 'success');
     } else {
       const files = { 'fitness-data.json': { content: dataPayload } };
       if (programPayload) files['program.json'] = { content: programPayload };
@@ -2185,7 +2232,6 @@ async function syncToGist(test = false) {
     }
     updateSyncStatus(true, 'sincronizzato');
   } catch(e) {
-    // errore di rete (offline, firewall ecc.) — dati locali al sicuro
     updateSyncStatus(false, 'offline');
     if (test) showToast('Rete non disponibile — dati salvati localmente', 'error');
   }
@@ -2316,6 +2362,11 @@ async function loadFromGist() {
     return;
   }
 
+  let remoteState = null;
+  let remoteProgram = null;
+
+  _gistReady = true; // allow writes now — comparison guard in syncToGist handles overwrite protection
+
   try {
     const res = await fetch(`https://api.github.com/gists/${gistId}`, {
       headers: { 'Authorization': `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' }
@@ -2324,46 +2375,59 @@ async function loadFromGist() {
     if (!res.ok) throw new Error('Gist fetch failed: ' + res.status);
     const data = await res.json();
 
-    // ── fitness-data.json ──
     const dataContent = data.files['fitness-data.json']?.content;
     if (dataContent) {
-      const remote   = JSON.parse(dataContent);
-      const remoteTs = remote.updatedAt || 0;
-      const localTs  = state.updatedAt  || 0;
-
-      if (remoteTs >= localTs) {
-        // Gist è uguale o più recente → usa Gist
-        state.logs        = remote.logs        || {};
-        state.currentWeek = remote.currentWeek || state.currentWeek;
-        state.nextWorkout = remote.nextWorkout  || state.nextWorkout;
-        state.updatedAt   = remoteTs;
-        localStorage.setItem('fitnessTracker_v5', JSON.stringify(state));
-        localStorage.setItem('fitnessTrackerVersion', LS_VERSION);
-      } else {
-        // locale è più recente (modifiche offline) → aggiorna Gist
-        await syncToGist();
-      }
+      try { remoteState = JSON.parse(dataContent); } catch(_) {}
     }
 
-    // ── program.json ──
     const programContent = data.files['program.json']?.content;
     if (programContent) {
-      const remoteProgram = JSON.parse(programContent);
+      try { remoteProgram = JSON.parse(programContent); } catch(_) {}
+    }
+
+    if (!remoteState && !remoteProgram) {
+      return;
+    }
+
+    const remoteTs = remoteState?.updatedAt || 0;
+    const localTs  = state.updatedAt  || 0;
+
+    if (remoteTs > localTs) {
+      state.logs        = remoteState.logs        || {};
+      state.currentWeek = remoteState.currentWeek || state.currentWeek;
+      state.nextWorkout = remoteState.nextWorkout  || state.nextWorkout;
+      state.updatedAt    = remoteTs;
+      persistLocal();
+    } else if (localTs > remoteTs) {
+      if (remoteState) {
+        state.logs        = remoteState.logs        || {};
+        state.currentWeek = remoteState.currentWeek || state.currentWeek;
+        state.nextWorkout = remoteState.nextWorkout  || state.nextWorkout;
+        state.updatedAt   = remoteTs;
+        persistLocal();
+      }
+      await syncToGist();
+    } else if (remoteState) {
+      state.logs        = remoteState.logs        || {};
+      state.currentWeek = remoteState.currentWeek || state.currentWeek;
+      state.nextWorkout = remoteState.nextWorkout  || state.nextWorkout;
+      state.updatedAt   = remoteTs;
+      persistLocal();
+    }
+
+    if (remoteProgram) {
       PROGRAM = remoteProgram;
-      localStorage.setItem('fitnessProgram_v1', JSON.stringify(remoteProgram));
+      localStorage.setItem('fitnessProgram_v1', JSON.stringify(PROGRAM));
     }
 
     updateSyncStatus(true, 'sincronizzato');
 
   } catch(e) {
-    // offline o errore rete → usa localStorage se disponibile
     updateSyncStatus(false, 'offline');
     if (!state.logs || Object.keys(state.logs).length === 0) {
       showOfflineWarning();
-      await new Promise(r => setTimeout(r, 1500)); // mostra avviso 1.5s
+      await new Promise(r => setTimeout(r, 1500));
     }
-  } finally {
-    _gistReady = true;
   }
 }
 
