@@ -2059,6 +2059,7 @@ function updateLog() {
 
 function setFatigue(val) {
   const key = logKey(currentWorkout, state.currentWeek);
+  if (state.logs[key]?.fatigue === val) return;
   if (state.logs[key]) state.logs[key].fatigue = val;
   document.querySelectorAll('.fatigue-btn').forEach((b,i) => {
     b.classList.toggle('selected', i+1 === val);
