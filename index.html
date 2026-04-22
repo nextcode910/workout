@@ -2009,7 +2009,7 @@ function _updateLogLocal() {
   const w   = state.currentWeek;
   const key = logKey(currentWorkout, w);
 
-  const existing = state.logs[key] || {};
+  const existing = state.logs[key];
 
   const exercisesLog = wo.exercises.map(ex => {
     const scheme = getExScheme(ex, w);
@@ -2023,18 +2023,28 @@ function _updateLogLocal() {
     return { id: ex.id, name: ex.name, sets };
   });
 
+  const hasInputData = exercisesLog.some(ex => ex.sets.some(s => s.kg || s.reps));
+  const startTime = document.getElementById('sessionStart')?.value;
+  const endTime = document.getElementById('sessionEnd')?.value;
+  const notes = document.getElementById('sessionNotes')?.value;
+  const hasExistingExerciseData = existing?.exercises?.some(ex => ex.sets?.some(s => s.kg || s.reps));
+
+  if (!hasInputData && !startTime && !endTime && !notes && !hasExistingExerciseData) {
+    return;
+  }
+
   state.logs[key] = {
     ...existing,
     workout:   currentWorkout,
     week:      w,
     phase:     getPhaseForWeek(w).name,
-    date:      existing.date || new Date().toISOString(),
-    fatigue:   existing.fatigue || 0,
-    startTime: document.getElementById('sessionStart')?.value || existing.startTime || '',
-    endTime:   document.getElementById('sessionEnd')?.value   || existing.endTime   || '',
-    notes:     document.getElementById('sessionNotes')?.value || '',
+    date:      existing?.date || new Date().toISOString(),
+    fatigue:   existing?.fatigue || 0,
+    startTime: startTime || existing?.startTime || '',
+    endTime:   endTime || existing?.endTime || '',
+    notes:     notes || existing?.notes || '',
     exercises: exercisesLog,
-    completed: existing.completed || false,
+    completed: existing?.completed || false,
   };
 
   state.updatedAt = Date.now();
