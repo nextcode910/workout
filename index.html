@@ -2407,12 +2407,14 @@ async function loadFromGist() {
         persistLocal();
       }
       await syncToGist();
-    } else if (remoteState) {
+    } else if (remoteState?.logs && Object.keys(remoteState.logs).length > 0) {
       state.logs        = remoteState.logs        || {};
       state.currentWeek = remoteState.currentWeek || state.currentWeek;
       state.nextWorkout = remoteState.nextWorkout  || state.nextWorkout;
       state.updatedAt   = remoteTs;
       persistLocal();
+    } else if (localTs > 0) {
+      await syncToGist();
     }
 
     if (remoteProgram) {
