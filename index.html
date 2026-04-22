@@ -2028,8 +2028,9 @@ function _updateLogLocal() {
   const endTime = document.getElementById('sessionEnd')?.value;
   const notes = document.getElementById('sessionNotes')?.value;
   const hasExistingExerciseData = existing?.exercises?.some(ex => ex.sets?.some(s => s.kg || s.reps));
+  const hasInputMeta = (startTime && startTime.trim()) || (endTime && endTime.trim()) || (notes && notes.trim());
 
-  if (!hasInputData && !startTime && !endTime && !notes && !hasExistingExerciseData) {
+  if (!hasInputData && !hasInputMeta && !hasExistingExerciseData) {
     return;
   }
 
@@ -2040,9 +2041,9 @@ function _updateLogLocal() {
     phase:     getPhaseForWeek(w).name,
     date:      existing?.date || new Date().toISOString(),
     fatigue:   existing?.fatigue || 0,
-    startTime: startTime || existing?.startTime || '',
-    endTime:   endTime || existing?.endTime || '',
-    notes:     notes || existing?.notes || '',
+    startTime: (startTime && startTime.trim()) ? startTime : (existing?.startTime || ''),
+    endTime:   (endTime && endTime.trim()) ? endTime : (existing?.endTime || ''),
+    notes:     (notes && notes.trim()) ? notes : (existing?.notes || ''),
     exercises: exercisesLog,
     completed: existing?.completed || false,
   };
@@ -2444,7 +2445,7 @@ async function loadFromGist() {
   }
 }
 
-init();
+// bootstrap removed; init called below
 </script>
 </body>
 </html>
