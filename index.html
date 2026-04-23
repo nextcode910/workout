@@ -1198,6 +1198,22 @@
       <input type="file" id="importFile" accept=".json" style="display:none" onchange="handleImport(event)">
     </div>
 
+    <div style="margin-top:24px">
+      <div class="settings-section" style="padding:0">
+        <h2>App</h2>
+        <p>Installa l'app per un'esperienza simile a quella nativa.</p>
+      </div>
+      <button class="btn-primary ripple" id="installPwaBtn" onclick="installPWA()" style="display:none">
+        <span class="material-icons">install_mobile</span>
+        Installa app
+      </button>
+      <div id="pwaInstalledMsg" style="display:none;font-size:12px;color:var(--accent);margin-top:8px">
+        <span class="material-icons" style="font-size:14px;vertical-align:middle">check_circle</span>
+        App già installata
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">Su Android usa Chrome → menu → "Installa app". Su iOS usa Safari → "Aggiungi alla Home".</div>
+    </div>
+
     <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border)">
       <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-weight:600;margin-bottom:10px">GitHub API</div>
       <div class="progress-card" id="apiCounterSection" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px">
@@ -2707,6 +2723,30 @@ async function loadFromGist() {
 window.addEventListener('load', init);
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js');
+}
+
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = document.getElementById('installPwaBtn');
+  if (btn) btn.style.display = 'flex';
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  const btn = document.getElementById('installPwaBtn');
+  const msg = document.getElementById('pwaInstalledMsg');
+  if (btn) btn.style.display = 'none';
+  if (msg) msg.style.display = 'block';
+});
+
+function installPWA() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(result => {
+    deferredPrompt = null;
+  });
 }
 </script>
 </body>

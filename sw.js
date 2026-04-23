@@ -1,9 +1,15 @@
 const CACHE_NAME = 'fitness-v1';
-const ASSETS = ['./', './index.html'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.addAll([
+        './',
+        './index.html',
+        './manifest.json',
+        './icon.svg'
+      ]);
+    })
   );
 });
 
