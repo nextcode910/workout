@@ -1746,8 +1746,8 @@ function renderWorkoutView(letter) {
       <td><span class="ex-method ${methodClass}">${ex.methodLabel}</span></td>
       <td>${setsHtml}</td>
       <td style="vertical-align:middle">
-        <button class="timer-btn-main" style="padding:4px" onclick="showMachineInfo('${ex.id}')" title="Info esercizio">+</button>
-        <button class="timer-btn-main" style="padding:4px;margin-top:4px" onclick="showMachineSettings('${ex.id}')" title="Impostazioni macchina">⚙</button>
+        <button class="timer-btn-main" style="padding:4px;height:28px" onclick="showMachineInfo('${ex.id}')" title="Info esercizio">+</button>
+        <button class="timer-btn-main" style="padding:4px;margin-top:2px;height:28px" onclick="showMachineSettings('${ex.id}')" title="Impostazioni macchina">⚙</button>
       </td>`;
     tbody.appendChild(tr);
   });
