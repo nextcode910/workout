@@ -2,8 +2,12 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fitness Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#e94560">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.json">
+  <title>Fitness Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 <style>
@@ -1778,6 +1782,13 @@ function _saveTimerState() {
   }));
 }
 
+function _renderTimer() {
+  const m = Math.floor(Math.abs(_timerSeconds) / 60);
+  const s = Math.abs(_timerSeconds) % 60;
+  document.getElementById('timerTime').textContent =
+    `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function timerPlayPause() {
   if (_timerSeconds <= 0 && !_timerRunning) return;
   if (_timerRunning) {
@@ -2694,6 +2705,9 @@ async function loadFromGist() {
 
 // bootstrap removed; init called below
 window.addEventListener('load', init);
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
+}
 </script>
 </body>
 </html>
