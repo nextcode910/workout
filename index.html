@@ -1067,6 +1067,7 @@
           <th>Recupero</th>
           <th>Metodo</th>
           <th style="min-width:220px">Log set</th>
+          <th style="width:60px">Info</th>
         </tr>
       </thead>
       <tbody id="exerciseBody"></tbody>
@@ -1244,6 +1245,53 @@
   </div>
 </div>
 
+<!-- MACHINE INFO POPUP -->
+<div id="machineInfoPopup" class="warmup-popup" style="display:none" onclick="closeMachineInfo(event)">
+  <div class="warmup-popup-inner">
+    <h3 id="machineInfoTitle">Info esercizio</h3>
+    <textarea id="machineInfoText" placeholder="Note esecuzione, variazioni, osservazioni..." style="width:100%;height:120px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:14px;resize:none"></textarea>
+    <button class="warmup-close" onclick="saveMachineInfo()" style="margin-top:12px">
+      <span style="display:flex;align-items:center;justify-content:center;gap:6px">
+        <span class="material-icons" style="font-size:18px">save</span>
+        Salva
+      </span>
+    </button>
+  </div>
+</div>
+
+<!-- MACHINE SETTINGS POPUP -->
+<div id="machineSettingsPopup" class="warmup-popup" style="display:none" onclick="closeMachineSettings(event)">
+  <div class="warmup-popup-inner">
+    <h3>Impostazioni macchina</h3>
+    <div style="margin:16px 0">
+      <div style="margin-bottom:16px">
+        <label style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span>Altezza</span><span id="heightVal">5</span>
+        </label>
+        <input type="range" id="heightRange" min="1" max="10" value="5" style="width:100%" oninput="updateHeightVal(this.value)">
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span>Profondità</span><span id="depthVal">5</span>
+        </label>
+        <input type="range" id="depthRange" min="1" max="10" value="5" style="width:100%" oninput="updateDepthVal(this.value)">
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span>Piedi</span><span id="feetVal">5</span>
+        </label>
+        <input type="range" id="feetRange" min="1" max="10" value="5" style="width:100%" oninput="updateFeetVal(this.value)">
+      </div>
+    </div>
+    <button class="warmup-close" onclick="saveMachineSettings()" style="margin-top:8px">
+      <span style="display:flex;align-items:center;justify-content:center;gap:6px">
+        <span class="material-icons" style="font-size:18px">save</span>
+        Salva impostazioni
+      </span>
+    </button>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -1324,10 +1372,15 @@ function getExScheme(ex, w) {
   const wk = 'w' + w;
   const type = ex.type; // 'compound', 'isolation', 'postural', 'calf'
   const vol = PROGRAM.volumeScheme[type] || PROGRAM.volumeScheme.compound;
+  let restStr = vol.rest[pk] ?? '2 min';
+  let restMins = 2;
+  if (restStr.includes('min')) restMins = parseFloat(restStr);
+  else if (restStr.includes('s')) restMins = parseInt(restStr) / 60;
   return {
     sets:     vol.sets[wk]    ?? 2,
     repRange: vol.reps[pk]    ?? '10-12',
-    rest:     vol.rest[pk]    ?? '2 min',
+    rest:     restStr,
+    restMins: restMins,
     note:     getWeekNote(w)
   };
 }
@@ -1669,9 +1722,13 @@ function renderWorkoutView(letter) {
         ${rirHtml}
         ${refKgHint}
       </td>
-      <td style="white-space:nowrap;color:var(--text2)">${scheme.rest}</td>
+      <td style="white-space:nowrap;color:var(--text2);cursor:pointer" onclick="setTimerFromRecovery('${scheme.restMins}')" title="Clicca per impostare il timer">${scheme.rest}</td>
       <td><span class="ex-method ${methodClass}">${ex.methodLabel}</span></td>
-      <td>${setsHtml}</td>`;
+      <td>${setsHtml}</td>
+      <td style="vertical-align:middle">
+        <button class="timer-btn-main" style="padding:4px" onclick="showMachineInfo('${ex.id}')" title="Info esercizio">+</button>
+        <button class="timer-btn-main" style="padding:4px;margin-top:4px" onclick="showMachineSettings('${ex.id}')" title="Impostazioni macchina">⚙</button>
+      </td>`;
     tbody.appendChild(tr);
   });
 }
@@ -1686,32 +1743,74 @@ function changeWeek(w) {
 let _timerSeconds  = 0;
 let _timerInterval = null;
 let _timerRunning  = false;
+let _timerStartTs = 0;     // timestamp when timer started
+let _timerEndTs   = 0;    // timestamp when timer should end (for countdown)
+
+function _restoreTimer() {
+  const stored = localStorage.getItem('timerState');
+  if (!stored) return;
+  try {
+    const data = JSON.parse(stored);
+    if (data.running && data.endTs) {
+      const now = Date.now();
+      const remaining = Math.max(0, Math.floor((data.endTs - now) / 1000));
+      if (remaining > 0) {
+        _timerSeconds = remaining;
+        _timerStartTs = data.startTs;
+        _timerEndTs   = data.endTs;
+        timerPlayPause();
+        return;
+      }
+    }
+    if (data.seconds && !data.running) {
+      _timerSeconds = data.seconds;
+      _renderTimer();
+    }
+  } catch(e) {}
+}
+
+function _saveTimerState() {
+  localStorage.setItem('timerState', JSON.stringify({
+    running: _timerRunning,
+    startTs: _timerStartTs,
+    endTs:   _timerEndTs,
+    seconds: _timerSeconds,
+  }));
+}
 
 function timerPlayPause() {
   if (_timerSeconds <= 0 && !_timerRunning) return;
   if (_timerRunning) {
     clearInterval(_timerInterval);
     _timerRunning = false;
+    _timerEndTs = 0;
     document.getElementById('timerPlayIcon').textContent = 'play_arrow';
     document.getElementById('timerDisplay').classList.remove('running');
     document.getElementById('timerWrap').classList.remove('sticky');
+    _saveTimerState();
   } else {
+    const now = Date.now();
+    _timerStartTs = now;
+    _timerEndTs   = now + (_timerSeconds * 1000);
     _timerRunning = true;
     document.getElementById('timerPlayIcon').textContent = 'pause';
     document.getElementById('timerDisplay').classList.add('running');
     document.getElementById('timerDisplay').classList.remove('finished');
     document.getElementById('timerWrap').classList.add('sticky');
+    _saveTimerState();
     _timerInterval = setInterval(() => {
-      _timerSeconds--;
+      const remaining = Math.max(0, Math.floor((_timerEndTs - Date.now()) / 1000));
+      _timerSeconds = remaining;
       _renderTimer();
       if (_timerSeconds <= 0) {
         clearInterval(_timerInterval);
         _timerRunning = false;
+        _timerEndTs = 0;
         document.getElementById('timerPlayIcon').textContent = 'play_arrow';
         document.getElementById('timerDisplay').classList.remove('running');
         document.getElementById('timerDisplay').classList.add('finished');
-        // rimane sticky con contorno rosso — sparisce solo al reset manuale
         if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        localStorage.removeItem('timerState');
       }
     }, 1000);
   }
@@ -1721,24 +1820,57 @@ function timerReset() {
   clearInterval(_timerInterval);
   _timerRunning  = false;
   _timerSeconds  = 0;
+  _timerStartTs = 0;
+  _timerEndTs   = 0;
   document.getElementById('timerPlayIcon').textContent = 'play_arrow';
   document.getElementById('timerDisplay').classList.remove('running', 'finished');
   document.getElementById('timerWrap').classList.remove('sticky');
   _renderTimer();
+  localStorage.removeItem('timerState');
 }
 
 function timerAdd(secs) {
   _timerSeconds = Math.max(0, _timerSeconds) + secs;
+  if (_timerRunning) {
+    _timerEndTs = Date.now() + (_timerSeconds * 1000);
+  }
   document.getElementById('timerDisplay').classList.remove('finished');
   _renderTimer();
+  _saveTimerState();
 }
 
-function _renderTimer() {
-  const m = Math.floor(Math.abs(_timerSeconds) / 60);
-  const s = Math.abs(_timerSeconds) % 60;
-  document.getElementById('timerTime').textContent =
-    `${m}:${String(s).padStart(2, '0')}`;
+function setTimerFromRecovery(mins) {
+  const secs = Math.round(mins * 60);
+  if (_timerRunning) {
+    clearInterval(_timerInterval);
+    _timerRunning = false;
+  }
+  _timerSeconds = secs;
+  _timerStartTs = Date.now();
+  _timerEndTs = _timerStartTs + (secs * 1000);
+  _timerRunning = true;
+  document.getElementById('timerPlayIcon').textContent = 'pause';
+  document.getElementById('timerDisplay').classList.add('running');
+  document.getElementById('timerDisplay').classList.remove('finished');
+  document.getElementById('timerWrap').classList.add('sticky');
+  _saveTimerState();
+  _timerInterval = setInterval(() => {
+    const remaining = Math.max(0, Math.floor((_timerEndTs - Date.now()) / 1000));
+    _timerSeconds = remaining;
+    _renderTimer();
+    if (_timerSeconds <= 0) {
+      clearInterval(_timerInterval);
+      _timerRunning = false;
+      _timerEndTs = 0;
+      document.getElementById('timerPlayIcon').textContent = 'play_arrow';
+      document.getElementById('timerDisplay').classList.remove('running');
+      document.getElementById('timerDisplay').classList.add('finished');
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      localStorage.removeItem('timerState');
+    }
+  }, 1000);
 }
+
 function showWarmup(exId) {
   const wo = PROGRAM.workouts[currentWorkout];
   const ex = wo.exercises.find(e => e.id === exId);
@@ -1769,6 +1901,107 @@ function closeWarmup(e) {
 
 function closeWarmupBtn() {
   document.getElementById('warmupPopup').style.display = 'none';
+}
+
+let _currentMachineId = null;
+
+function showMachineInfo(exId) {
+  _currentMachineId = exId;
+  const wo = PROGRAM?.workouts[currentWorkout];
+  const ex = wo?.exercises.find(e => e.id === exId);
+  const logEx = _getLogExercise(exId);
+  const notes = logEx?.machineNotes || '';
+  document.getElementById('machineInfoTitle').textContent = ex?.name || 'Esercizio';
+  document.getElementById('machineInfoText').value = notes;
+  document.getElementById('machineInfoPopup').style.display = 'flex';
+}
+
+function closeMachineInfo(e) {
+  if (e.target === document.getElementById('machineInfoPopup')) {
+    document.getElementById('machineInfoPopup').style.display = 'none';
+  }
+}
+
+function saveMachineInfo() {
+  if (!_currentMachineId) return;
+  const notes = document.getElementById('machineInfoText').value;
+  _saveMachineData(_currentMachineId, { machineNotes: notes });
+  document.getElementById('machineInfoPopup').style.display = 'none';
+  showToast('Info salvate', 'success');
+}
+
+function showMachineSettings(exId) {
+  _currentMachineId = exId;
+  const wo = PROGRAM?.workouts[currentWorkout];
+  const ex = wo?.exercises.find(e => e.id === exId);
+  const logEx = _getLogExercise(exId);
+  const settings = logEx?.machineSettings || { height: 5, depth: 5, feet: 5 };
+  document.getElementById('heightRange').value = settings.height || 5;
+  document.getElementById('depthRange').value = settings.depth || 5;
+  document.getElementById('feetRange').value = settings.feet || 5;
+  document.getElementById('heightVal').textContent = settings.height || 5;
+  document.getElementById('depthVal').textContent = settings.depth || 5;
+  document.getElementById('feetVal').textContent = settings.feet || 5;
+  document.getElementById('machineSettingsPopup').style.display = 'flex';
+}
+
+function closeMachineSettings(e) {
+  if (e.target === document.getElementById('machineSettingsPopup')) {
+    document.getElementById('machineSettingsPopup').style.display = 'none';
+  }
+}
+
+function updateHeightVal(v) { document.getElementById('heightVal').textContent = v; }
+function updateDepthVal(v) { document.getElementById('depthVal').textContent = v; }
+function updateFeetVal(v)  { document.getElementById('feetVal').textContent = v; }
+
+function saveMachineSettings() {
+  if (!_currentMachineId) return;
+  const settings = {
+    height: parseInt(document.getElementById('heightRange').value),
+    depth: parseInt(document.getElementById('depthRange').value),
+    feet:  parseInt(document.getElementById('feetRange').value),
+  };
+  _saveMachineData(_currentMachineId, { machineSettings: settings });
+  document.getElementById('machineSettingsPopup').style.display = 'none';
+  showToast('Impostazioni salvate', 'success');
+}
+
+function _getLogExercise(exId) {
+  if (!currentWorkout) return null;
+  const w = state.currentWeek;
+  const key = logKey(currentWorkout, w);
+  const log = state.logs[key];
+  return log?.exercises?.find(e => e.id === exId);
+}
+
+function _saveMachineData(exId, data) {
+  if (!currentWorkout) return;
+  const w = state.currentWeek;
+  const key = logKey(currentWorkout, w);
+  if (!state.logs[key]) {
+    state.logs[key] = {
+      workout: currentWorkout, week: w,
+      phase: getPhaseForWeek(w).name,
+      date: new Date().toISOString(),
+      fatigue: 0, startTime: '', endTime: '', notes: '',
+      exercises: [], completed: false,
+    };
+  }
+  const log = state.logs[key];
+  let ex = log.exercises.find(e => e.id === exId);
+  if (!ex) {
+    const wo = PROGRAM.workouts[currentWorkout];
+    const exDef = wo.exercises.find(e => e.id === exId);
+    if (!exDef) return;
+    ex = { id: exDef.id, name: exDef.name, sets: [] };
+    log.exercises.push(ex);
+  }
+  if (data.machineNotes !== undefined) ex.machineNotes = data.machineNotes;
+  if (data.machineSettings) ex.machineSettings = data.machineSettings;
+  state.updatedAt = Date.now();
+  persistLocal();
+  debouncedSync();
 }
 
 // ── STATISTICHE ──────────────────────────────────
@@ -2341,6 +2574,14 @@ function showOfflineWarning() {
 async function init() {
   showLoader('Caricamento programma…');
 
+  // Safety: hide loader after 10 seconds
+  setTimeout(() => {
+    const loader = document.getElementById('appLoader');
+    if (loader && !loader.classList.contains('hidden')) {
+      hideLoader();
+    }
+  }, 10000);
+
   // 1. leggi localStorage silenziosamente (solo per confronto updatedAt)
   loadState();
   readHashConfig();
@@ -2349,6 +2590,9 @@ async function init() {
   showLoader('Caricamento programma…');
   const ok = await loadProgram();
   if (!ok) { hideLoader(); return; }
+
+  // 2b. ripristina timer se era in esecuzione
+  _restoreTimer();
 
   // 3. se non c'è token → lavora offline con localStorage
   if (!state.settings.githubToken) {
@@ -2399,6 +2643,7 @@ async function loadFromGist() {
     }
 
     if (!remoteState && !remoteProgram) {
+      updateSyncStatus(true, 'vuoto');
       return;
     }
 
