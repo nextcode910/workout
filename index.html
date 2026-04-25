@@ -1291,7 +1291,7 @@
 <!-- MACHINE SETTINGS POPUP -->
 <div id="machineSettingsPopup" class="warmup-popup" style="display:none" onclick="closeMachineSettings(event)">
   <div class="warmup-popup-inner">
-    <h3>Impostazioni macchina</h3>
+    <h3>Impostazioni</h3>
     <div style="margin:16px 0">
       <div style="margin-bottom:16px">
         <label style="display:flex;justify-content:space-between;margin-bottom:6px">
@@ -1312,7 +1312,22 @@
         <input type="range" id="feetRange" min="1" max="10" value="5" style="width:100%" oninput="updateFeetVal(this.value)">
       </div>
     </div>
-    <button class="warmup-close" onclick="saveMachineSettings()" style="margin-top:8px">
+    <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;font-weight:600">Panca</div>
+      <div style="margin-bottom:16px">
+        <label style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span>Inclinazione obliqua</span><span id="inclineVal">0°</span>
+        </label>
+        <input type="range" id="inclineRange" min="0" max="90" value="0" step="10" style="width:100%" oninput="updateInclineVal(this.value)">
+      </div>
+      <div style="margin-bottom:4px">
+        <label style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span>Inclinazione seduta</span><span id="seatVal">0°</span>
+        </label>
+        <input type="range" id="seatRange" min="0" max="25" value="0" step="5" style="width:100%" oninput="updateSeatVal(this.value)">
+      </div>
+    </div>
+    <button class="warmup-close" onclick="saveMachineSettings()" style="margin-top:14px">
       <span style="display:flex;align-items:center;justify-content:center;gap:6px">
         <span class="material-icons" style="font-size:18px">save</span>
         Salva impostazioni
@@ -1893,6 +1908,7 @@ function setTimerFromRecovery(mins) {
   document.getElementById('timerDisplay').classList.add('running');
   document.getElementById('timerDisplay').classList.remove('finished');
   document.getElementById('timerWrap').classList.add('sticky');
+  _renderTimer();
   _saveTimerState();
   _timerInterval = setInterval(() => {
     const remaining = Math.max(0, Math.floor((_timerEndTs - Date.now()) / 1000));
@@ -1975,13 +1991,17 @@ function showMachineSettings(exId) {
   const wo = PROGRAM?.workouts[currentWorkout];
   const ex = wo?.exercises.find(e => e.id === exId);
   const logEx = _getLogExercise(exId);
-  const settings = logEx?.machineSettings || { height: 5, depth: 5, feet: 5 };
+  const settings = logEx?.machineSettings || { height: 5, depth: 5, feet: 5, incline: 0, seat: 0 };
   document.getElementById('heightRange').value = settings.height || 5;
   document.getElementById('depthRange').value = settings.depth || 5;
   document.getElementById('feetRange').value = settings.feet || 5;
+  document.getElementById('inclineRange').value = settings.incline || 0;
+  document.getElementById('seatRange').value = settings.seat || 0;
   document.getElementById('heightVal').textContent = settings.height || 5;
   document.getElementById('depthVal').textContent = settings.depth || 5;
   document.getElementById('feetVal').textContent = settings.feet || 5;
+  document.getElementById('inclineVal').textContent = (settings.incline || 0) + '°';
+  document.getElementById('seatVal').textContent = (settings.seat || 0) + '°';
   document.getElementById('machineSettingsPopup').style.display = 'flex';
 }
 
@@ -1994,13 +2014,17 @@ function closeMachineSettings(e) {
 function updateHeightVal(v) { document.getElementById('heightVal').textContent = v; }
 function updateDepthVal(v) { document.getElementById('depthVal').textContent = v; }
 function updateFeetVal(v)  { document.getElementById('feetVal').textContent = v; }
+function updateInclineVal(v) { document.getElementById('inclineVal').textContent = v + '°'; }
+function updateSeatVal(v)   { document.getElementById('seatVal').textContent = v + '°'; }
 
 function saveMachineSettings() {
   if (!_currentMachineId) return;
   const settings = {
     height: parseInt(document.getElementById('heightRange').value),
-    depth: parseInt(document.getElementById('depthRange').value),
-    feet:  parseInt(document.getElementById('feetRange').value),
+    depth:  parseInt(document.getElementById('depthRange').value),
+    feet:   parseInt(document.getElementById('feetRange').value),
+    incline: parseInt(document.getElementById('inclineRange').value),
+    seat:    parseInt(document.getElementById('seatRange').value),
   };
   _saveMachineData(_currentMachineId, { machineSettings: settings });
   document.getElementById('machineSettingsPopup').style.display = 'none';
